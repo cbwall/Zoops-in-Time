@@ -106,7 +106,7 @@ derepFs<- readRDS("output/derepFs.rds")
 derepRs <- derepFastq(filtRs, verbose=TRUE)
 saveRDS(derepRs, file="output/derepRs.rds")
 derepRs<- readRDS("output/derepRs.rds")
-
+ 
 # Name the derep-class objects by the sample names
 names(derepFs) <- sampleNames
 names(derepRs) <- sampleNames

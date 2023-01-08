@@ -2,7 +2,7 @@
 #PBS -q hotel
 #PBS -N cutadapt
 #PBS -l nodes=1:ppn=8
-#PBS -l walltime=00:30:00
+#PBS -l walltime=00:50:00
 #PBS -o /projects/ps-shurinlab/users/cbwall/Zoops_MP/output/outs/cutadapt_out
 #PBS -e /projects/ps-shurinlab/users/cbwall/Zoops_MP/output/errs/cutadapt_err
 #PBS -V
@@ -22,21 +22,14 @@ cd /projects/ps-shurinlab/users/cbwall/Zoops_MP/data/raw_sequences_MP
 # create text file with list of all sample names
 # assumes samples are in folder data with month.year after, and have format of...
 # sampleid_S###_L001_R1_001.fastq
-ls /projects/ps-shurinlab/users/cbwall/Zoops_MP/data/raw_sequences_MP | sed 's/_L[[:digit:]]\+_.*//g' > /projects/ps-shurinlab/users/cbwall/Zoops_MP/data/samples.txt
+ls /projects/ps-shurinlab/users/cbwall/Zoops_MP/data/raw_sequences_MP | sed 's/_L[[:digit:]]\+_.*//g' > /projects/ps-shurinlab/users/cbwall/Zoops_MP/data/raw_sequences_MP/samples.txt
 
 
-#remove any index files
-rm index*
-rm laneBarcode.html
-rm @md5Sum.md5 
+#remove any index files if haven't already
+#rm index*
+#rm laneBarcode.html
+#rm @md5Sum.md5 
 
-
-# unzip sequence files, if necessary
-# gunzip *.fastq.gz
-
-
-# change to lab directory and create output file in personal folder
-# cd /projects/ps-shurinlab/users/cbwall/Zoops_MP
 
 # --- back to the code...
 # code written specifically for samples that only have the 16S adapter sequence on the 5' end 
@@ -62,11 +55,17 @@ rm @md5Sum.md5
 
 #### --- back to the code...
 
+# change to directory where 'data' and 'output' folder is for the loop
+cd /projects/ps-shurinlab/users/cbwall/Zoops_MP
+
+# unzip sequence files, if necessary
+gunzip data/raw_sequences_MP/*.fastq.gz
+
 
 #run the loop
 
 
-for SAMPLEID in $(cat data/samples.txt);
+for SAMPLEID in $(cat data/raw_sequences_MP/samples.txt);
 do
     echo "On sample: $SAMPLEID"
     cutadapt -g GTGYCAGCMGCCGCGGTAA -G GGACTACNVGGGTWTCTAAT \
@@ -76,7 +75,6 @@ do
     data/raw_sequences_MP/${SAMPLEID}_L001_R2_001.fastq \
 	>> output/cutadapt_primer_trimming_stats.txt 2>&1
 done
-
 
 
 # re-zip sequence files

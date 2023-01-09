@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -q hotel
-#PBS -N 16S decon
+#PBS -N 16S_dada_decon
 #PBS -l nodes=1:ppn=2
 #PBS -l walltime=01:00:00
 #PBS -o /projects/ps-shurinlab/users/cbwall/Zoops_MP/output/outs/Rscript_out

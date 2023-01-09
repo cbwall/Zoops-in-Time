@@ -1,23 +1,32 @@
 ############ 16S part 4
 # decontam
 
-# remember to run through the 4.0.2 version of R instead of default
+# remember to run through the 4.1.2 version of R instead of default
 
-
-install.packages("ggplot2")
+#install.packages("ggplot2")
 library("ggplot2")
 
-install.packages("decontam")
+#install.packages("decontam")
 library("decontam")
 packageVersion("decontam")
 
-install.packages("phyloeq")
-library("phyloeq")
+library("BiocManager")
+
+#BiocManager::install("phyloseq")
+library("phyloseq")
 packageVersion("phyloseq")
 
-install.packages("Biostrings")
+#BiocManager::install("Biostrings", force=TRUE)
 library("Biostrings")
 packageVersion("Biostrings")
+
+### the below help with formatting, editing, exporting phyloseq
+#install.packages("remotes")
+#remotes::install_github("adrientaudiere/MiscMetabar")
+#remotes::install_github("peterolah001/BiMiCo")
+library("MiscMetabar")
+library("BiMiCo")
+
 
 start_time <- Sys.time() # track timing
 
@@ -46,6 +55,11 @@ asv_fasta <- readRDS("output/ASV_fasta.rds")
 # counts colnames should be a list of the samples, tax_table colnames should be kingdom phylum class etc...
 print("Counts columns")
 colnames(counts)
+
+# need this to remove "X" if reading back in
+colnames(counts) <- gsub(x = colnames(counts), pattern = "X", replacement = "")
+colnames(counts)
+
 print("Tax columns")
 colnames(tax_table)
 
@@ -59,7 +73,7 @@ rownames(run.metaD) <- run.metaD$sampleNames
 ps <-phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE),
               sample_data(run.metaD), 
               tax_table(taxa))
-
+# 14094 taxa in 368 samples
 
 # make a string of DNA names and add to phyloseq
 dna <- Biostrings::DNAStringSet(taxa_names(ps))
@@ -67,20 +81,24 @@ names(dna) <- taxa_names(ps)
 ps <- merge_phyloseq(ps, dna)
 taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
 
-# save ps object
-saveRDS(ps, file="output/ps.rds")
-
 ###########################
 # Show available ranks in the dataset
 rank_names(ps)
 
 table(tax_table(ps)[, "Phylum"], exclude = NULL)
 table(tax_table(ps)[, "Kingdom"], exclude = NULL)
+# 195 Archaea, 12209 Bacteria, 22 Eukaryota 1668 NA
 
 # remove NAs in taxonomic table
-ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized"))
+ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized")) # only Archaea and Bacteria
 ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "Chloroplast"))
-ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "Chloroplast"))
+
+# could start with removing ALL non bacterial sequences
+# ps<-rm_nonbac(ps)
+# by avoiding this step we are keeping in the Archaea
+
+#### summary
+# 7577 taxa in 368 samples
 
 ###########################
 # Compute prevalence of each feature, store as data.frame
@@ -103,39 +121,46 @@ ps.prune <- prune_taxa(taxa_sums(ps) > 1, ps)
 # remove samples with < 100 reads
 ps.prune <- prune_samples(sample_sums(ps.prune) > 100, ps.prune)
 ps.prune
-saveRDS(ps.prune, file="output/ps.prune")
+# 7356 taxa in 341 samples
 
 sample_data(ps.prune)$is.neg <- sample_data(ps.prune)$sample_control == "neg.controls" 
 contamdf.prev <- isContaminant(ps.prune, method="prevalence", neg="is.neg")
 
-table(contamdf.prev$contaminant) # which are contaminants?
+table(contamdf.prev$contaminant) # which are contaminants? 7091 NO, 265 YES
 head(which(contamdf.prev$contaminant))
 
 ###########################
 ### remove contaminants
 ps.noncontam <- prune_taxa(!contamdf.prev$contaminant, ps.prune)
 ps.noncontam
-saveRDS(ps.noncontam, file="output/ps.noncontam")
 
-rich<-estimate_richness(ps.noncontam, split = TRUE, measures = NULL)
-richness.plot<-plot_richness(ps.noncontam, x="year", measures=c("Observed", "Shannon")) + theme_bw()
+#make sure those negative and pos controls are out! 
+ps.noncontam.controls.out<- subset_samples(ps.noncontam, 
+                                           !(sample_control %in% "neg.controls"))
+ps.noncontam.controls.out<- subset_samples(ps.noncontam.controls.out, 
+                                           !(sample_control %in% "pos.controls"))
 
-richness.plot
-dev.copy(pdf, "output/richness.plot.pdf", height=4, width=5)
-dev.off() 
+# leaves 322 samples with 7091 taxa
+
+
+rich<-estimate_richness(ps.noncontam.controls.out, split = TRUE, measures = NULL)
+write.csv(rich, "output/richness.table.csv")
 
 ########### let's inspect
-df.noncontam <- as.data.frame(sample_data(ps.noncontam))
-df.noncontam$LibrarySize <- sample_sums(ps.noncontam) # this is the # of reads
-df.noncontam <- df.noncontam[order(df.noncontam$LibrarySize),]
-df.noncontam$Index <- seq(nrow(df.noncontam))
-########### 
+df.noncontam.noncontrol <- as.data.frame(sample_data(ps.noncontam.controls.out))
+df.noncontam.noncontrol$LibrarySize <- sample_sums(ps.noncontam.controls.out) # this is the # of reads
+df.noncontam.noncontrol <- df.noncontam.noncontrol[order(df.noncontam.noncontrol$LibrarySize),]
+df.noncontam.noncontrol$Index <- seq(nrow(df.noncontam.noncontrol))
 
 # library size / number of reads
 df.noncontam$LibrarySize
 
-#remove neg controls
-ps.noncontam.negout<- subset_samples(ps.noncontam, !(sample_control %in% "neg.controls"))
+########### 
 
-# 4777 taxa in 99 samples (+ controls still in here -- can use to assess accuracy in mock)
+# save ps as 4 csvs
+# One to four csv tables (refseq.csv, otu_table.csv, tax_table.csv, sam_data.csv) 
+write_phyloseq(ps.noncontam.controls.out, path = "output")
 
+
+
+##### END!!!!

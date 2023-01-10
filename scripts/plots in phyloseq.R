@@ -41,7 +41,7 @@ dev.off()
 
 
 # Make a data frame with a column for the read counts of each sample
-sample_sum_df <- data.frame(sum = sample_sums(PS.fin))
+sample_sum_df <- data.frame(read.sum = sample_sums(PS.fin))
 
 # Histogram of sample read counts
 hist.depth<-ggplot(sample_sum_df, aes(x = sum)) + 
@@ -58,4 +58,18 @@ dev.off()
 pdf(file="output/rare.raw.pdf", height=4, width=10)
 rarecurve(otu_table(PS.fin), step=50, cex=0.5, xlim=c(0,100000), label=FALSE)
 #abline(v = 5000, lty = "dotted", col="red", lwd=2)
+dev.off() 
+
+# make rownames the sample names
+sample_sum_df$sampleNames<-rownames(sample_sum_df)
+
+# merge in the reads
+run.metaD<-merge(run.metaD, sample_sum_df, by="sampleNames", all.y=TRUE)
+
+pdf(file="output/read.by.species.pdf", height=4, width=10)
+boxplot(run.metaD$read.sum~run.metaD$Organism)
+dev.off() 
+
+pdf(file="output/read.by.sample.pdf", height=4, width=5)
+boxplot(run.metaD$read.sum~run.metaD$sample_control)
 dev.off() 

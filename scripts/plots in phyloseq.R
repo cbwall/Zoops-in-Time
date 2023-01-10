@@ -65,6 +65,7 @@ sample_sum_df$sampleNames<-rownames(sample_sum_df)
 
 # merge in the reads
 run.metaD<-merge(run.metaD, sample_sum_df, by="sampleNames", all.y=TRUE)
+write.csv(run.metaD, "output/run.metaD.final.csv")
 
 pdf(file="output/read.by.species.pdf", height=4, width=10)
 boxplot(run.metaD$read.sum~run.metaD$Organism)

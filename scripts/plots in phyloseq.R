@@ -74,3 +74,11 @@ dev.off()
 pdf(file="output/read.by.sample.pdf", height=4, width=5)
 boxplot(run.metaD$read.sum~run.metaD$sample_control)
 dev.off() 
+
+pdf(file="output/log.reads.sample.pdf", height=4, width=7)
+ggplot(run.metaD, aes(x=sample_control, y=log(read.sum), color=Organism)) + geom_boxplot()
+dev.off() 
+
+pdf(file="output/reads.sample.pdf", height=4, width=7)
+ggplot(run.metaD, aes(x=sample_control, y=read.sum, color=Organism)) + geom_boxplot()
+dev.off() 

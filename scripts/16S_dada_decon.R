@@ -93,6 +93,9 @@ table(tax_table(ps)[, "Kingdom"], exclude = NULL)
 ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized")) # only Archaea and Bacteria
 ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "Chloroplast"))
 
+# just in case!
+ps<- subset_taxa(ps, Family!= "mitochondria" | is.na(Family) & Class!="Chloroplast" | is.na(Class)) 
+
 # could start with removing ALL non bacterial sequences
 # ps<-rm_nonbac(ps)
 # by avoiding this step we are keeping in the Archaea
@@ -101,65 +104,70 @@ ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "Chloroplast"))
 # 7577 taxa in 368 samples
 
 ###########################
-# Compute prevalence of each feature, store as data.frame
-prevdf = apply(X = otu_table(ps),
-               MARGIN = ifelse(taxa_are_rows(ps), yes = 1, no = 2),
-               FUN = function(x){sum(x > 0)})
-
-# Add taxonomy and total read counts to this data.frame
-prevdf = data.frame(Prevalence = prevdf,
-                    TotalAbundance = taxa_sums(ps),
-                    tax_table(ps))
-
-plyr::ddply(prevdf, "Phylum", function(df1){cbind(mean(df1$Prevalence),sum(df1$Prevalence))})
-
-###########################
 ## ID contaminants
-# first let's prune those not in at least 1 sample
-ps.prune <- prune_taxa(taxa_sums(ps) > 1, ps)
+sample_data(ps)$is.neg <- sample_data(ps)$sample_control == "neg.controls" 
+contamdf.prev <- isContaminant(ps, method="prevalence", neg="is.neg")
 
-# remove samples with < 100 reads
-ps.prune <- prune_samples(sample_sums(ps.prune) > 100, ps.prune)
-ps.prune
-# 7356 taxa in 341 samples
-
-sample_data(ps.prune)$is.neg <- sample_data(ps.prune)$sample_control == "neg.controls" 
-contamdf.prev <- isContaminant(ps.prune, method="prevalence", neg="is.neg")
-
-table(contamdf.prev$contaminant) # which are contaminants? 7091 NO, 265 YES
+table(contamdf.prev$contaminant) # which are contaminants? 7326 NO, 251 YES
 head(which(contamdf.prev$contaminant))
 
 ###########################
-### remove contaminants
-ps.noncontam <- prune_taxa(!contamdf.prev$contaminant, ps.prune)
+### prune controls and low reads
+ps.noncontam <- prune_taxa(!contamdf.prev$contaminant, ps)
 ps.noncontam
+#7326 taxa in 368 samples
 
 #make sure those negative and pos controls are out! 
 ps.noncontam.controls.out<- subset_samples(ps.noncontam, 
                                            !(sample_control %in% "neg.controls"))
 ps.noncontam.controls.out<- subset_samples(ps.noncontam.controls.out, 
                                            !(sample_control %in% "pos.controls"))
+# 7326 taxa in 347 samples
 
-# leaves 322 samples with 7091 taxa
+###########################
+# prune those not in at least 1 sample
+ps.prune <- prune_taxa(taxa_sums(ps.noncontam.controls.out) > 1, ps.noncontam.controls.out) 
+# 7045 in 347 samples
+
+# remove samples with < 100 reads
+ps.prune <- prune_samples(sample_sums(ps.prune) > 100, ps.prune)
+ps.prune
+# 7045 taxa in 320 samples
 
 
-rich<-estimate_richness(ps.noncontam.controls.out, split = TRUE, measures = NULL)
+###########################
+# Compute prevalence of each feature, store as data.frame
+prevdf = apply(X = otu_table(ps.prune),
+               MARGIN = ifelse(taxa_are_rows(ps.prune), yes = 1, no = 2),
+               FUN = function(x){sum(x > 0)})
+
+# Add taxonomy and total read counts to this data.frame
+prevdf = data.frame(Prevalence = prevdf,
+                    TotalAbundance = taxa_sums(ps.prune),
+                    tax_table(ps.prune))
+
+prev.ASVs<-plyr::ddply(prevdf, "Phylum", function(df1){cbind(mean(df1$Prevalence),sum(df1$Prevalence))})
+colnames(prev.ASVs)<- c("Phylum", "mean.prevalence", "sum.prevalence")
+write.csv(prev.ASVs, "output/prev.ASVs.csv")
+
+
+rich<-estimate_richness(ps.prune, split = TRUE, measures = NULL)
 write.csv(rich, "output/richness.table.csv")
 
 ########### let's inspect
-df.noncontam.noncontrol <- as.data.frame(sample_data(ps.noncontam.controls.out))
-df.noncontam.noncontrol$LibrarySize <- sample_sums(ps.noncontam.controls.out) # this is the # of reads
-df.noncontam.noncontrol <- df.noncontam.noncontrol[order(df.noncontam.noncontrol$LibrarySize),]
-df.noncontam.noncontrol$Index <- seq(nrow(df.noncontam.noncontrol))
+df.ps.prune <- as.data.frame(sample_data(ps.prune))
+df.ps.prune$LibrarySize <- sample_sums(ps.prune) # this is the # of reads
+df.ps.prune <- df.ps.prune[order(df.ps.prune$LibrarySize),]
+df.ps.prune$Index <- seq(nrow(df.ps.prune))
 
 # library size / number of reads
-df.noncontam$LibrarySize
+df.ps.prune$LibrarySize
 
 ########### 
 
 # save ps as 4 csvs
 # One to four csv tables (refseq.csv, otu_table.csv, tax_table.csv, sam_data.csv) 
-write_phyloseq(ps.noncontam.controls.out, path = "output")
+write_phyloseq(ps.prune, path = "output")
 
 
 

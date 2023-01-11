@@ -123,10 +123,14 @@ saveRDS(mergers, "output/merged_amplicons.rds")
 # remove anything that is "mock community"
 seqtab <- makeSequenceTable(mergers)
 saveRDS(seqtab, "output/seqtab.rds")
-#seqtab <- readRDS("output/seqtab.rds")
+#seqtab <- readRDS("output/TSCC-output/seqtab.rds")
 
 ####
 # The sequence table is a matrix with rows corresponding to (and named by) the samples, and columns corresponding to (and named by) the sequence variants
+pdf(file="output/seqtab.hist.pdf", height=5, width=5)
+hist(nchar(getSequences(seqtab)))
+dev.off()
+
 table(nchar(getSequences(seqtab)))
 dim(seqtab) 
 

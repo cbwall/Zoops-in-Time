@@ -35,7 +35,12 @@ setwd('/projects/ps-shurinlab/users/cbwall/Zoops_MP')
 ## required load in
 ###################################################################################################
 # read in formatted metaData
-run.metaD<-read.csv("output/run.metaD.edit.csv")
+run.metaD<-read.csv("output/TSCC-output/run.metaD.edit.csv")
+run.metaD<-run.metaD[-1] # remove the "X" column
+
+# format metadata (have to redo this if loading back in)
+make.fac<-c("Original_ID", "Sequencing_ID", "Sample_Type", "Organism", "Time.Point", "Lake", "Plate", "Plate_name", "Well", "sample_control")
+run.metaD[make.fac]<-lapply(run.metaD[make.fac], factor) # make all these factors
 
 # Sample Names
 sampleNames<-run.metaD$sampleNames
@@ -49,7 +54,7 @@ seqtab.nochim <- readRDS("output/seqtab.nochim.rds")
 # load the three files generated in tables.R
 counts <- read.table(file = 'output/ASV_counts.tsv', sep = '\t', header = TRUE, row.names = 1)
 tax_table <- read.table(file = 'output/ASV_taxonomy.tsv', sep = '\t', header = TRUE, row.names = 1)
-asv_fasta <- readRDS("output/ASV_fasta.rds")
+asv_fasta <- readRDS("output/TSCC-output/ASV_fasta.rds")
 
 # sanity check to make sure the tables loaded right
 # counts colnames should be a list of the samples, tax_table colnames should be kingdom phylum class etc...
@@ -168,7 +173,6 @@ df.ps.prune$LibrarySize
 # save ps as 4 csvs
 # One to four csv tables (refseq.csv, otu_table.csv, tax_table.csv, sam_data.csv) 
 write_phyloseq(ps.prune, path = "output")
-
 
 
 ##### END!!!!

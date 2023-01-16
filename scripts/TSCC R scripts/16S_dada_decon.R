@@ -54,7 +54,7 @@ seqtab.nochim <- readRDS("output/seqtab.nochim.rds")
 # load the three files generated in tables.R
 counts <- read.table(file = 'output/ASV_counts.tsv', sep = '\t', header = TRUE, row.names = 1)
 tax_table <- read.table(file = 'output/ASV_taxonomy.tsv', sep = '\t', header = TRUE, row.names = 1)
-asv_fasta <- readRDS("output/TSCC-output/ASV_fasta.rds")
+asv_fasta <- readRDS("output/ASV_fasta.rds")
 
 # sanity check to make sure the tables loaded right
 # counts colnames should be a list of the samples, tax_table colnames should be kingdom phylum class etc...
@@ -153,11 +153,11 @@ prevdf = data.frame(Prevalence = prevdf,
 
 prev.ASVs<-plyr::ddply(prevdf, "Phylum", function(df1){cbind(mean(df1$Prevalence),sum(df1$Prevalence))})
 colnames(prev.ASVs)<- c("Phylum", "mean.prevalence", "sum.prevalence")
-write.csv(prev.ASVs, "output/prev.ASVs.csv")
+write.csv(prev.ASVs, "output/TSCC-output/prev.ASVs.csv")
 
 
 rich<-estimate_richness(ps.prune, split = TRUE, measures = NULL)
-write.csv(rich, "output/richness.table.csv")
+write.csv(rich, "output/TSCC-output/richness.table.csv")
 
 ########### let's inspect
 df.ps.prune <- as.data.frame(sample_data(ps.prune))
@@ -169,6 +169,8 @@ df.ps.prune$Index <- seq(nrow(df.ps.prune))
 df.ps.prune$LibrarySize
 
 ########### 
+saveRDS(ps.prune, "output/ps.prune.RDS") # save phyloseq
+ps.prune<-readRDS("output/ps.prune.RDS") # bring it back
 
 # save ps as 4 csvs
 # One to four csv tables (refseq.csv, otu_table.csv, tax_table.csv, sam_data.csv) 

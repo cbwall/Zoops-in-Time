@@ -99,14 +99,14 @@ ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized")) # 
 ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "Chloroplast"))
 
 # just in case!
-ps<- subset_taxa(ps, Family!= "mitochondria" | is.na(Family) & Class!="Chloroplast" | is.na(Class)) 
+ps<- subset_taxa(ps, Family!= "Mitochondria" | is.na(Family) & Class!="Chloroplast" | is.na(Class)) 
 
 # could start with removing ALL non bacterial sequences
 # ps<-rm_nonbac(ps)
 # by avoiding this step we are keeping in the Archaea
 
 #### summary
-# 7577 taxa in 368 samples
+# 5550 taxa in 368 samples
 
 ###########################
 ## ID contaminants
@@ -120,24 +120,24 @@ head(which(contamdf.prev$contaminant))
 ### prune controls and low reads
 ps.noncontam <- prune_taxa(!contamdf.prev$contaminant, ps)
 ps.noncontam
-#7326 taxa in 368 samples
+#5412 taxa in 368 samples
 
 #make sure those negative and pos controls are out! 
 ps.noncontam.controls.out<- subset_samples(ps.noncontam, 
                                            !(sample_control %in% "neg.controls"))
 ps.noncontam.controls.out<- subset_samples(ps.noncontam.controls.out, 
                                            !(sample_control %in% "pos.controls"))
-# 7326 taxa in 347 samples
+# 5412 taxa in 347 samples
 
 ###########################
 # prune those not in at least 1 sample
 ps.prune <- prune_taxa(taxa_sums(ps.noncontam.controls.out) > 1, ps.noncontam.controls.out) 
-# 7045 in 347 samples
+# 5192 in 320 samples
 
 # remove samples with < 100 reads
 ps.prune <- prune_samples(sample_sums(ps.prune) > 100, ps.prune)
 ps.prune
-# 7045 taxa in 320 samples
+# 5192 taxa in 320 samples
 
 
 ###########################

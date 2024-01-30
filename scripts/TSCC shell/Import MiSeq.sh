@@ -51,6 +51,12 @@ wget -r -nH -nc -np -R index.html* "http://slimsdata.genomecenter.ucdavis.edu/Da
 # /Yos_plank16S_time_MP/Data/mxhmt2vqki/221216_M02034_0667_MS3148658-500V2/Unaligned2/Project_JSJD_MP_Pool1
 
 # copy the files above into a single folder in user folder
+# can copy (cp) files from one place to another with directory (-r)
+cp -r /projects/ps-shurinlab/Trophobiomes/ANL.sequencing raw.sequences/
+
+# copy from a folder based on a string into a new folder
+cp CBW_YoTB_6[0-9][0-9]* For.Josh/
+
 # navigate to user directory
 cd /projects/ps-shurinlab/users/cbwall
 
@@ -121,6 +127,9 @@ qdel <jobid>
 
 # check job status
 checkjob <jobid>
+
+# check nodes for a user
+qstat -n -u cbwall
 
 # inspect the output file to confirm no error reports
 

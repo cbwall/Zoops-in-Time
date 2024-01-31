@@ -26,6 +26,10 @@ pacman::p_load('knitr', 'microbiome', 'phyloseq', 'tidyr', 'tidyverse', 'knitr',
 
 ps.prune.LOCAL<-readRDS("output/local/ps.prune_local.RDS")
 
+# idiot check: make sure to remove all mitochondria and chloroplast taxonomic IDs
+ps.prune.LOCAL <- subset_taxa(ps.prune.LOCAL, Family!= "Mitochondria" | 
+                        is.na(Family) & Class!="Chloroplast" | is.na(Class))
+
 # export metadata and play
 metaD<-microbiome::meta(ps.prune.LOCAL)
 
@@ -35,7 +39,7 @@ metaD<-metaD %>%
     sequencing_ID = Sequencing_ID,
     sample_type = Sample_Type,
     organism = Organism,
-    time.point= Time.Point,
+    time_point= Time.Point,
     lake = Lake,
     sample_ID = Original_ID
   )
@@ -47,7 +51,7 @@ metaD$organism<-as.factor(metaD$organism) # back to factor
 
 
 # format metadata (have to redo this if loading back in)
-make.fac<-c("sample_ID", "sequencing_ID", "sample_type", "time.point", "lake", "Plate", "Plate_name", "Well", "sample_control")
+make.fac<-c("sample_ID", "sequencing_ID", "sample_type", "time_point", "lake", "Plate", "Plate_name", "Well", "sample_control")
 
 metaD[make.fac]<-lapply(metaD[make.fac], factor) # make all these factors
 
@@ -79,48 +83,67 @@ identical(rownames(sample_sum_df), rownames(metaD))
 metaD$read.sum<-sample_sum_df$read.sum
 
 # add in dates, as per metadata
-metaD$date<-ifelse(metaD$time.point =="1" | metaD$lake =="Blue", "6/29/2022",
-                            ifelse(metaD$time.point =="2" | metaD$lake =="Blue", "7/09/2022",
-                            ifelse(metaD$time.point =="3" | metaD$lake =="Blue", "7/21/2022",
-                            ifelse(metaD$time.point =="4" | metaD$lake =="Blue", "8/04/2022",
-                            ifelse(metaD$time.point =="5" | metaD$lake =="Blue", "8/22/2022",
+metaD$date<-ifelse(metaD$time_point =="1" | metaD$lake =="Blue", "6/29/2022",
+                            ifelse(metaD$time_point =="2" | metaD$lake =="Blue", "7/09/2022",
+                            ifelse(metaD$time_point =="3" | metaD$lake =="Blue", "7/21/2022",
+                            ifelse(metaD$time_point =="4" | metaD$lake =="Blue", "8/04/2022",
+                            ifelse(metaD$time_point =="5" | metaD$lake =="Blue", "8/22/2022",
                     
-                     ifelse(metaD$time.point =="1" | metaD$lake =="Convict", "6/25/2022",
-                            ifelse(metaD$time.point =="2" | metaD$lake =="Convict", "7/07/2022",
-                            ifelse(metaD$time.point =="3" | metaD$lake =="Convict", "7/22/2022",
-                            ifelse(metaD$time.point =="4" | metaD$lake =="Convict", "8/05/2022",
-                            ifelse(metaD$time.point =="5" | metaD$lake =="Convict", "8/23/2022",
+                     ifelse(metaD$time_point =="1" | metaD$lake =="Convict", "6/25/2022",
+                            ifelse(metaD$time_point =="2" | metaD$lake =="Convict", "7/07/2022",
+                            ifelse(metaD$time_point =="3" | metaD$lake =="Convict", "7/22/2022",
+                            ifelse(metaD$time_point =="4" | metaD$lake =="Convict", "8/05/2022",
+                            ifelse(metaD$time_point =="5" | metaD$lake =="Convict", "8/23/2022",
                           
-                     ifelse(metaD$time.point =="1" | metaD$lake =="Cooney", "6/29/2022",
-                            ifelse(metaD$time.point =="2" | metaD$lake =="Cooney", "7/09/2022",
-                            ifelse(metaD$time.point =="3" | metaD$lake =="Cooney", "7/21/2022",
-                            ifelse(metaD$time.point =="4" | metaD$lake =="Cooney", "8/04/2022",
-                            ifelse(metaD$time.point =="5" | metaD$lake =="Cooney", "8/22/2022", 
+                     ifelse(metaD$time_point =="1" | metaD$lake =="Cooney", "6/29/2022",
+                            ifelse(metaD$time_point =="2" | metaD$lake =="Cooney", "7/09/2022",
+                            ifelse(metaD$time_point =="3" | metaD$lake =="Cooney", "7/21/2022",
+                            ifelse(metaD$time_point =="4" | metaD$lake =="Cooney", "8/04/2022",
+                            ifelse(metaD$time_point =="5" | metaD$lake =="Cooney", "8/22/2022", 
                                 
-                     ifelse(metaD$time.point =="1" | metaD$lake =="Eastern Brook", "6/26/2022",
-                            ifelse(metaD$time.point =="2" | metaD$lake =="Eastern Brook", "7/06/2022",
-                            ifelse(metaD$time.point =="3" | metaD$lake =="Eastern Brook", "7/22/2022",
-                            ifelse(metaD$time.point =="4" | metaD$lake =="Eastern Brook", "8/09/2022",
-                            ifelse(metaD$time.point =="5" | metaD$lake =="Eastern Brook", "8/23/2022",
+                     ifelse(metaD$time_point =="1" | metaD$lake =="Eastern Brook", "6/26/2022",
+                            ifelse(metaD$time_point =="2" | metaD$lake =="Eastern Brook", "7/06/2022",
+                            ifelse(metaD$time_point =="3" | metaD$lake =="Eastern Brook", "7/22/2022",
+                            ifelse(metaD$time_point =="4" | metaD$lake =="Eastern Brook", "8/09/2022",
+                            ifelse(metaD$time_point =="5" | metaD$lake =="Eastern Brook", "8/23/2022",
                                    
-                    ifelse(metaD$time.point =="1" | metaD$lake =="Serene", "6/26/2022",
-                            ifelse(metaD$time.point =="2" | metaD$lake =="Serene", "7/06/2022",
-                            ifelse(metaD$time.point =="3" | metaD$lake =="Serene", "7/22/2022",
-                            ifelse(metaD$time.point =="4" | metaD$lake =="Serene", "8/09/2022",
-                            ifelse(metaD$time.point =="5" | metaD$lake =="Serene", "8/23/2022",
+                    ifelse(metaD$time_point =="1" | metaD$lake =="Serene", "6/26/2022",
+                            ifelse(metaD$time_point =="2" | metaD$lake =="Serene", "7/06/2022",
+                            ifelse(metaD$time_point =="3" | metaD$lake =="Serene", "7/22/2022",
+                            ifelse(metaD$time_point =="4" | metaD$lake =="Serene", "8/09/2022",
+                            ifelse(metaD$time_point =="5" | metaD$lake =="Serene", "8/23/2022",
                                   
-                    ifelse(metaD$time.point =="1" | metaD$lake =="Virginia", "6/29/2022",
-                            ifelse(metaD$time.point =="2" | metaD$lake =="Virginia", "7/09/2022",
-                            ifelse(metaD$time.point =="3" | metaD$lake =="Virginia", "7/21/2022",
-                            ifelse(metaD$time.point =="4" | metaD$lake =="Virginia", "8/04/2022",
+                    ifelse(metaD$time_point =="1" | metaD$lake =="Virginia", "6/29/2022",
+                            ifelse(metaD$time_point =="2" | metaD$lake =="Virginia", "7/09/2022",
+                            ifelse(metaD$time_point =="3" | metaD$lake =="Virginia", "7/21/2022",
+                            ifelse(metaD$time_point =="4" | metaD$lake =="Virginia", "8/04/2022",
                             "8/22/2022"
                             )))))))))))))))))))))))))))))
 
 # adjust formatting to be Date (from)
 metaD$date<-as.Date(mdy(metaD$date))
 
+
+# create latitude column
+metaD$latitude <- as.factor(ifelse(metaD$lake == "Blue", "38.050952", 
+                            (ifelse(metaD$lake == "Convict", "37.590094",
+                            (ifelse(metaD$lake == "Cooney", "38.04806",
+                            (ifelse(metaD$lake == "Eastern Brook", "37.431526", 
+                            (ifelse(metaD$lake == "Serene", "37.438392" ,
+                            (ifelse(metaD$lake == "Virginia", "38.046975",
+                                  "0"))))))))))))
+
+# create longitude column
+metaD$longitude <- as.factor(ifelse(metaD$lake == "Blue", "-119.270331", 
+                            (ifelse(metaD$lake == "Convict", "-118.857422",
+                            (ifelse(metaD$lake == "Cooney", "-119.27702",
+                            (ifelse(metaD$lake == "Eastern Brook", "-118.742615", 
+                            (ifelse(metaD$lake == "Serene", "-118.744386" ,
+                            (ifelse(metaD$lake == "Virginia", "-119.265076",
+                                  "0"))))))))))))
+
 metaD<- metaD %>%
-  dplyr::select(sequencing_ID, sampleNames, sample_ID, read.sum, time.point, date, lake, sample_type, organism, Number.of.Organism, phy_group)
+  dplyr::select(sequencing_ID, sampleNames, sample_ID, read.sum, time_point, date, lake, latitude, longitude, sample_type, organism, Number.of.Organism, phy_group)
 
    
 # the metadata above is now up to date with info necessary for downstream analysis
@@ -139,7 +162,7 @@ rownames(env.metad)<- env.metad$sampleNames
 env.metad<-env.metad[(env.metad$sampleNames %in% metaD$sampleNames),]
 
 env.metad<- env.metad %>%
-  dplyr::select(sample_ID, sequencing_ID, sampleNames, sample_type, organism, Number.of.Organism, time.point, lake, 
+  dplyr::select(sample_ID, sequencing_ID, sampleNames, sample_type, organism, Number.of.Organism, time_point, lake, 
                 elevation_m, temp_C, chla_ug.L, pH, DO_perc, spc, cond, DOC, TDN, TDP)
 
 ################################## ##################################
@@ -157,6 +180,7 @@ MetaD.SQ.Env$elev.cat <- as.factor(ifelse(MetaD.SQ.Env$elevation_m < 2900, "Belo
 
 # are row names the same? if so, let's boogie
 identical(rownames(sample_data(ps.prune.LOCAL)), rownames(MetaD.SQ.Env))
+write.csv(MetaD.SQ.Env, "output/local/MetaD.SQ.Env.csv")
 
 #updated metadata back into phyloseq
 sample_data(ps.prune.LOCAL)<-MetaD.SQ.Env
@@ -173,7 +197,6 @@ install.packages("remotes")
 remotes::install_github("microbiome/microbiome")
 
 x<-meta(PS.fin) # get metadata from phyloseq
-write.csv(x, "output/local/sample_data.FIN.csv")
 
 
 #### ALL
@@ -189,8 +212,8 @@ NMDS.all<-plot_ordination(
 NMDS.time<-plot_ordination(
   physeq = PS.fin,                                                   
   ordination = ORD) +                                                
-  geom_point(aes(color = time.point), size = 3) +    
-  stat_ellipse(level=0.9, linetype = 2, aes(color=time.point)) +
+  geom_point(aes(color = time_point), size = 3) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=time_point)) +
   ggtitle("ALL times") +
   theme_classic()  
 
@@ -212,11 +235,11 @@ dev.off()
 
 
 ### subset data frames
-T1<- subset_samples(PS.fin, time.point=="1")
-T2<- subset_samples(PS.fin, time.point=="2")
-T3<- subset_samples(PS.fin, time.point=="3")
-T4<- subset_samples(PS.fin, time.point=="4")
-T5<- subset_samples(PS.fin, time.point=="5")
+T1<- subset_samples(PS.fin, time_point=="1")
+T2<- subset_samples(PS.fin, time_point=="2")
+T3<- subset_samples(PS.fin, time_point=="3")
+T4<- subset_samples(PS.fin, time_point=="4")
+T5<- subset_samples(PS.fin, time_point=="5")
 
 ### subset ordinations
 ORD.T1 <- ordinate(T1, method='MDS', distance='bray')
@@ -376,10 +399,10 @@ richness.plot
 dev.copy(pdf, "output/local/richness.plot.organism.pdf", height=4, width=12)
 dev.off() 
 
-#richness by time.point
-richness.plot<-plot_richness(PS.fin, x="time.point", measures=c("Observed", "Shannon")) + theme_bw()
+#richness by time_point
+richness.plot<-plot_richness(PS.fin, x="time_point", measures=c("Observed", "Shannon")) + theme_bw()
 richness.plot
-dev.copy(pdf, "output/local/richness.plot.time.point.pdf", height=4, width=10)
+dev.copy(pdf, "output/local/richness.plot.time_point.pdf", height=4, width=10)
 dev.off() 
 ###### 
 
@@ -434,7 +457,7 @@ shannon.lake<-ggplot(Shan.rich.df, aes(x=lake, y=Shannon)) +
   xlab("Lake") +
   theme(axis.title.y = element_blank()) + theme_classic()
 
-shannon.time<-ggplot(Shan.rich.df, aes(x=time.point, y=Shannon)) + 
+shannon.time<-ggplot(Shan.rich.df, aes(x=time_point, y=Shannon)) + 
   geom_boxplot(aes(color=organism)) +
   ggtitle("Shannon richness") + 
   xlab("Time") +

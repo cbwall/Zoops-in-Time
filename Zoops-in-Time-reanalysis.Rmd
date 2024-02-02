@@ -1,0 +1,1734 @@
+---
+title: "Zooplankton Microbiomes Across Time and Space"
+author: "MG Perreault, CB Wall"
+date: "1/15/2024"
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+editor_options: 
+  chunk_output_type: console
+---
+```{r global options, results="hide", warning=FALSE, message=FALSE}
+if (!require('knitr')) install.packages('knitr'); library('knitr')
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, fig.align='center')
+
+# load packages
+if (!require("pacman")) install.packages("pacman") # for rapid install if not in library
+
+devtools::install_github("benjjneb/dada2", ref="v1.20") # update to most recent dada2
+devtools::install_github("zdk123/SpiecEasi")
+remotes::install_github("microbiome/microbiome")
+
+
+# use pacman to load CRAN packages missing
+pacman::p_load('knitr', 'microbiome', 'phyloseq', 'tidyr', 'tidyverse', 'knitr', 'magrittr', 'effects', 'devtools',
+               'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan", "cowplot", 'doBy', 'ecodist',
+               'glue', 'geosphere', 'data.table', 'patchwork', 'car', 'ggcorrplot', 'FactoMineR', 'devtools', 'reshape',
+               'lattice',  'plyr', 'magrittr', 'factoextra', 'multcompView', 'decontam', 'factoextra', 'car', 'mia', 
+               'ade4', 'fossil', 'picante', 'reshape', 'readr', 'corrr', 'scipplot', 'Hmisc', "MASS", "FSA", "sciplot",
+               "decontam","BiocManager", 'ggpubr', 'ggmap', "ggordiplots", "fossil", "SpiecEasi", "igraph", "huge",
+               "leaflet")
+```
+
+## Overview
+
+### Import Phyloseq
+Import the data and modify the metadata to meet downstream needs
+```{r loading in data and modifying metadata}
+##########################################################
+
+# ps.prune is the final phyloseq object from pipeline, can load it in here...
+### or load in the raw data and re-assemble
+
+ps.prune.LOCAL<-readRDS("output/reanalysis/ps.prune_local.RDS")
+
+# idiot check: make sure to remove all mitochondria and chloroplast taxonomic IDs
+ps.prune.LOCAL <- subset_taxa(ps.prune.LOCAL, Family!= "Mitochondria" | 
+                        is.na(Family) & Class!="Chloroplast" | is.na(Class))
+
+# order the lakes by North to South,  in phyloseq 
+sample_data(ps.prune.LOCAL)$Lake <- factor(sample_data(ps.prune.LOCAL)$Lake, levels = 
+                                           c("Cooney", "Blue", "Virginia", "Convict", "Serene", "Eastern Brook"))
+
+# export metadata and play
+metaD<-microbiome::meta(ps.prune.LOCAL)
+
+# adjust caps
+metaD<-metaD %>% 
+  dplyr::rename(
+    sequencing_ID = Sequencing_ID,
+    sample_type = Sample_Type,
+    organism = Organism,
+    time_point= Time.Point,
+    lake = Lake,
+    sample_ID = Original_ID
+  )
+
+# correct NAs to be "water"
+metaD$organism<-as.character(metaD$organism) # need to do this to change the level
+metaD$organism[is.na(metaD$organism)] = "Water"
+metaD$organism<-as.factor(metaD$organism)
+metaD$organism<-factor(metaD$organism, levels =c("Bosmina", "Ceriodaphnia", "Daphnia", "Holopedium", 
+                                             "Cyclopoid", "Calanoid", "Large Calanoid",
+                                             "Water")) # back to factor
+
+
+# format metadata (have to redo this if loading back in)
+make.fac<-c("sample_ID", "sequencing_ID", "sample_type", "time_point", "lake", "Plate", "Plate_name", "Well", "sample_control")
+
+metaD[make.fac]<-lapply(metaD[make.fac], factor) # make all these factors
+
+# create phy group (Cladocera vs Copepoda vs water) column
+metaD$phy_group <- as.factor(ifelse(metaD$organism == "Calanoid" | 
+                            metaD$organism == "Cyclopoid" | 
+                            metaD$organism == "Large Calanoid", "copepoda", 
+                   ifelse(metaD$organism == "Daphnia" | 
+                            metaD$organism == "Ceriodaphnia" | 
+                            metaD$organism =="Bosmina" | 
+                            metaD$organism == "Holopedium", "cladocera", 
+                            "water")))
+
+# create basin column
+metaD$basin <- as.factor(ifelse(metaD$lake == "Eastern Brook" | 
+                                metaD$lake == "Serene" | 
+                                metaD$lake == "Convict", "South", 
+                                "North"))
+
+# create latitude column
+metaD$latitude <- as.numeric(ifelse(metaD$lake == "Blue", "38.050952", 
+                            (ifelse(metaD$lake == "Convict", "37.590094",
+                            (ifelse(metaD$lake == "Cooney", "38.04806",
+                            (ifelse(metaD$lake == "Eastern Brook", "37.431526", 
+                            (ifelse(metaD$lake == "Serene", "37.438392" ,
+                            (ifelse(metaD$lake == "Virginia", "38.046975",
+                                  "0"))))))))))))
+
+# create longitude column
+metaD$longitude <- as.numeric(ifelse(metaD$lake == "Blue", "-119.270331", 
+                            (ifelse(metaD$lake == "Convict", "-118.857422",
+                            (ifelse(metaD$lake == "Cooney", "-119.27702",
+                            (ifelse(metaD$lake == "Eastern Brook", "-118.742615", 
+                            (ifelse(metaD$lake == "Serene", "-118.744386" ,
+                            (ifelse(metaD$lake == "Virginia", "-119.265076",
+                                  "0"))))))))))))
+                            
+
+
+##### Read counts and rarefaction curves
+# Make a data frame with a column for the read counts of each sample
+sample_sum_df<-as.data.frame(sample_sums(ps.prune.LOCAL))
+colnames(sample_sum_df)<-"read.sum"
+sample_sum_df$sampleNames<-rownames(sample_sum_df)
+
+# are row names the same? if so, add them in
+identical(rownames(sample_sum_df), rownames(metaD))
+metaD$read.sum<-sample_sum_df$read.sum
+
+# add in dates, as per metadata
+metaD$date<-ifelse(metaD$time_point =="1" | metaD$lake =="Blue", "6/29/2022",
+                            ifelse(metaD$time_point =="2" | metaD$lake =="Blue", "7/09/2022",
+                            ifelse(metaD$time_point =="3" | metaD$lake =="Blue", "7/21/2022",
+                            ifelse(metaD$time_point =="4" | metaD$lake =="Blue", "8/04/2022",
+                            ifelse(metaD$time_point =="5" | metaD$lake =="Blue", "8/22/2022",
+                    
+                     ifelse(metaD$time_point =="1" | metaD$lake =="Convict", "6/25/2022",
+                            ifelse(metaD$time_point =="2" | metaD$lake =="Convict", "7/07/2022",
+                            ifelse(metaD$time_point =="3" | metaD$lake =="Convict", "7/22/2022",
+                            ifelse(metaD$time_point =="4" | metaD$lake =="Convict", "8/05/2022",
+                            ifelse(metaD$time_point =="5" | metaD$lake =="Convict", "8/23/2022",
+                          
+                     ifelse(metaD$time_point =="1" | metaD$lake =="Cooney", "6/29/2022",
+                            ifelse(metaD$time_point =="2" | metaD$lake =="Cooney", "7/09/2022",
+                            ifelse(metaD$time_point =="3" | metaD$lake =="Cooney", "7/21/2022",
+                            ifelse(metaD$time_point =="4" | metaD$lake =="Cooney", "8/04/2022",
+                            ifelse(metaD$time_point =="5" | metaD$lake =="Cooney", "8/22/2022", 
+                                
+                     ifelse(metaD$time_point =="1" | metaD$lake =="Eastern Brook", "6/26/2022",
+                            ifelse(metaD$time_point =="2" | metaD$lake =="Eastern Brook", "7/06/2022",
+                            ifelse(metaD$time_point =="3" | metaD$lake =="Eastern Brook", "7/22/2022",
+                            ifelse(metaD$time_point =="4" | metaD$lake =="Eastern Brook", "8/09/2022",
+                            ifelse(metaD$time_point =="5" | metaD$lake =="Eastern Brook", "8/23/2022",
+                                   
+                    ifelse(metaD$time_point =="1" | metaD$lake =="Serene", "6/26/2022",
+                            ifelse(metaD$time_point =="2" | metaD$lake =="Serene", "7/06/2022",
+                            ifelse(metaD$time_point =="3" | metaD$lake =="Serene", "7/22/2022",
+                            ifelse(metaD$time_point =="4" | metaD$lake =="Serene", "8/09/2022",
+                            ifelse(metaD$time_point =="5" | metaD$lake =="Serene", "8/23/2022",
+                                  
+                    ifelse(metaD$time_point =="1" | metaD$lake =="Virginia", "6/29/2022",
+                            ifelse(metaD$time_point =="2" | metaD$lake =="Virginia", "7/09/2022",
+                            ifelse(metaD$time_point =="3" | metaD$lake =="Virginia", "7/21/2022",
+                            ifelse(metaD$time_point =="4" | metaD$lake =="Virginia", "8/04/2022",
+                            "8/22/2022"
+                            )))))))))))))))))))))))))))))
+
+# adjust formatting to be Date (from)
+metaD$date<-as.Date(mdy(metaD$date))
+
+metaD<- metaD %>%
+  dplyr::select(sequencing_ID, sampleNames, sample_ID, read.sum, time_point, date, lake, latitude, longitude, basin, sample_type, organism, Number.of.Organism, phy_group)
+
+   
+# the metadata above is now up to date with info necessary for downstream analysis
+# now merge in the environmental data 
+
+################################## ##################################
+# read in the environmental data
+env.metad<-read.csv("data/full.library.env.metaD.csv")
+
+# make a column for 'Samplenames' and use this as rownames
+env.metad$sampleNames<-env.metad$sequencing_ID
+env.metad$sampleNames <- gsub("^.{0,3}", "", env.metad$sampleNames)
+rownames(env.metad)<- env.metad$sampleNames
+
+# remove the rows not found in the meta-meta data -- these are samples lost in dada2/controls
+env.metad<-env.metad[(env.metad$sampleNames %in% metaD$sampleNames),]
+
+env.metad<- env.metad %>%
+  dplyr::select(sample_ID, sequencing_ID, sampleNames, sample_type, organism, Number.of.Organism, time_point, lake, 
+                elevation_m, temp_C, chla_ug.L, pH, DO_perc, spc, cond, DOC, TDN, TDP)
+
+################################## ##################################
+# no merge, subset to make it easier to merge...
+env.metad.reduce<-env.metad %>%
+  dplyr::select(sampleNames, elevation_m, temp_C, chla_ug.L, pH, DO_perc, spc, cond, DOC, TDN, TDP)
+
+
+# merge the two = final metadata, add in rownames for phyloseq merge
+MetaD.SQ.Env<-merge(metaD, env.metad.reduce, by="sampleNames", all.x=TRUE)
+rownames(MetaD.SQ.Env)<-MetaD.SQ.Env$sampleNames
+
+# make new column for above or below treeline
+MetaD.SQ.Env$elev.cat <- as.factor(ifelse(MetaD.SQ.Env$elevation_m < 2900, "Below", "Above"))
+
+# are row names the same? if so, let's boogie
+identical(rownames(sample_data(ps.prune.LOCAL)), rownames(MetaD.SQ.Env))
+write.csv(MetaD.SQ.Env, "output/MetaD.SQ.Env.csv")
+
+#updated metadata back into phyloseq
+sample_data(ps.prune.LOCAL)<-MetaD.SQ.Env
+PS.fin<- ps.prune.LOCAL
+
+table(sample_data(PS.fin)$sample_type) #329 samples: 30 water, 299 zooplankton
+
+# change to this order for later plot tests-- ultimately Bosmina and Ceriodaphnia are dropped nad large calanoids grouped into calanoids...
+sample_data(PS.fin)$organism<-factor(sample_data(PS.fin)$organism, levels =c("Daphnia", "Holopedium", 
+                                            "Calanoid", "Cyclopoid", "Water", "Bosmina", "Ceriodaphnia", 
+                                            "Large Calanoid")) # back to factor
+
+########### 
+saveRDS(PS.fin, "output/reanalysis/PS.fin.RDS") # save phyloseq
+```
+
+Inspect the run: what is the # of reads/sample? A bit over inflated due to water being so deeply sequenced, but log-readsum gives us a good picture
+```{r total reads by species boxplots raw data}
+
+#### inspect plots
+pdf(file="figures/reads.sample.pdf", height=4, width=7)
+ggplot(MetaD.SQ.Env, aes(x=sample_type, y=read.sum, color=organism)) + geom_boxplot() + theme_bw()
+dev.off() 
+
+pdf(file="figures/log.reads.sample.pdf", height=4, width=12)
+ggplot(MetaD.SQ.Env, aes(x=organism, y=log(read.sum), color=organism)) + geom_boxplot() + theme_bw()
+dev.off() 
+
+# read depth a bit low for zooplankton vs water, average depth is less than 2000 reads
+ggplot(MetaD.SQ.Env[(MetaD.SQ.Env$sample_type=="Zooplankton"),], aes(x=sample_type, y=read.sum, color=organism)) +
+  geom_boxplot() + 
+  theme_bw()
+```
+
+Now look at read depth and rarefaction curves to determine how to standardize sampling depth
+```{r Read depth plots and rarefaction curves}
+
+# Histogram of sample read counts
+hist.depth <- ggplot(MetaD.SQ.Env, aes(read.sum)) + 
+  geom_histogram(color="gold4", fill= "gold2", binwidth = 10000) + 
+  xlab("Read counts") +
+  ggtitle("Sequencing Depth") + theme_classic()
+
+hist.depth
+dev.copy(pdf, "figures/hist.depth.pdf", height=7, width=9)
+dev.off() 
+
+# a different view
+read_depth_violin <- ggplot(MetaD.SQ.Env, aes(x=1, y=read.sum)) +
+  geom_violin() + ggtitle("Distribution of sample sequencing depth") + scale_y_log10() +
+  xlab("Samples") + ylab("Read Depth") + geom_boxplot(width=0.1)
+
+read_depth_violin
+dev.copy(pdf, "figures/read_depth_violin.pdf", height=4, width=5)
+dev.off()
+
+# Rarefaction curve
+count_table_filt <- as.data.frame(otu_table(PS.fin))
+rarecurve((count_table_filt), step=50, cex=0.5, xlim=c(0,100000), ylab = "ASVs", label=FALSE)
+#abline(v = 500, lty = "dotted", col="red", lwd=2)
+
+dev.copy(pdf, "figures/rare.raw.pdf", height=4, width=8)
+dev.off() 
+```
+
+Now we will subset the phyloseq objects and compare the influence of rarefaction for the phyloseq data.
+- PS.fin is the final phyloseq object with all the data.  
+- PS.500 is rarefied to 500 read-depth (with low abundance samples removed)
+- PS.zoop is rarefied zooplankton data (500 read depth)
+- PS.water is rarefied water only (500 read depth)
+```{r exploring what low read count samples do and what to rarefy to}
+###### subset the PS objects for needs...
+# final and NOT rarefied data: 
+PS.fin
+
+# rarified to 500 reads: PS.rar, then reclassify and reduce some taxa and name "PS.500'
+PS.rar = rarefy_even_depth(PS.fin, rngseed=111, sample.size=500, replace=F) 
+table(sample_data(PS.rar)$sample_type) #288 samples: 28 water, 260 zooplankton
+
+
+######################
+# rarify, and hellinger
+PS.500.hell.test = transform_sample_counts(PS.rar, function(x) x^0.5)
+
+###### ###### ###### 
+# Compare full data vs. rarefied data beta diversity
+####### full data
+ord.full <- ordinate(PS.fin, method = 'PCoA', distance = 'bray')
+plot_ordination(PS.fin, ord.full, color = "sample_type")
+
+# what samples have low reads
+plot_ordination(PS.fin, ord.full, shape = "sample_type") +
+  geom_point(aes(color = read.sum > 500))
+
+Rare.culling<-plot_ordination(PS.fin, ord.full, color = "organism") +
+  geom_point(aes(shape = read.sum > 500, size= read.sum > 500)) +
+  scale_size_manual(values= c(6,2)) +
+  scale_shape_manual(values=c(1, 16))+
+  ggtitle("Samples culled by rarefaction") + theme_classic()
+
+# plot the PCoA for non-rarified
+Non.rar.NMDS<-plot_ordination(
+  physeq = PS.fin,                                                   
+  ordination = ord.full) +                                                
+  geom_point(aes(color = organism), size = 2) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=organism)) +
+  ggtitle("ALL taxa-all data") +
+  theme_classic() 
+
+###### if rarefied
+ord.rar <- ordinate(PS.rar, method = 'PCoA', distance = 'bray')
+plot_ordination(PS.rar, ord.rar, color = "sample_type")
+
+Rar.NMDS<- plot_ordination(
+  physeq = PS.rar,                                                   
+  ordination = ord.rar) +                                                
+  geom_point(aes(color = organism), size = 2) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=organism)) +
+  ggtitle("ALL taxa- 500reads") +
+  theme_classic() 
+
+#### rarefied, but hellinger transformed
+ord.hell <- ordinate(PS.500.hell.test, method = 'PCoA', distance = 'bray')
+
+Hell.NMDS<- plot_ordination(
+  physeq=PS.500.hell.test, 
+  ordination = ord.hell) +
+  geom_point(aes(color = organism), size = 2) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=organism)) +
+  ggtitle("ALL taxa - hellinger-500") +
+  theme_classic() 
+
+
+NMDS.tests<-plot_grid(Rare.culling + guides(color="none"), 
+                      Non.rar.NMDS +  guides(color="none"), 
+                      Rar.NMDS +  guides(color="none"), 
+                      Hell.NMDS, ncol=4, rel_widths=c(4,4,4,5.5))
+NMDS.tests
+dev.copy(pdf, "figures/NMDS.tests.pdf", height=6, width=20)
+dev.off()
+#######
+
+```
+
+```{r final phyloseq objects}
+################### final phyloseq object based on the above
+
+# this PS.500 is used for the richness data -- non-rarefied
+PS.500 = subset_samples(PS.rar, !organism=="Bosmina" & !organism=="Ceriodaphnia")
+table(sample_data(PS.500)$organism) 
+
+# classify the large calanoids as calanoids
+sample_data(PS.500)$organism<-sample_data(PS.500)$organism %>% 
+  dplyr::recode_factor(
+    "Large Calanoid" = "Calanoid")
+
+# check sample data
+table(sample_data(PS.500)$organism) 
+
+# set order of organims
+sample_data(PS.500)$organism<-factor(sample_data(PS.500)$organism, levels =c("Daphnia", "Holopedium", 
+                                            "Calanoid", "Cyclopoid", "Water")) # back to factor
+
+
+
+##############################
+######### hellinger transform the cleaned up data -- this is for beta diversity and NMDS etc
+# rarify, and hellinger
+PS.500.hell = transform_sample_counts(PS.500, function(x) x^0.5)
+
+###### check the # of samples in each taxa
+table(sample_data(PS.500.hell)$organism)
+table(sample_data(PS.500.hell)$sample_type) 
+#284 samples: 28 water, 256 zooplankton 
+#4 samples removed for low-abundance
+
+# sanity check
+# rarefied, but hellinger transformed
+ord.hell <- ordinate(PS.500.hell, method = 'PCoA', distance = 'bray')
+
+NMDS.hell.rar.fin<- plot_ordination(
+  physeq=PS.500.hell, 
+  ordination = ord.hell) +
+  geom_point(aes(color = organism), size = 2) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=organism)) +
+  ggtitle("ALL taxa - hellinger-500.pau") +
+  theme_classic() 
+
+NMDS.hell.rar.fin
+dev.copy(pdf, "figures/NMDS.hell.rar.fin.pdf", height=6, width=7)
+dev.off()
+```
+
+Here is the map of sampling locations
+```{r map}
+gps <- as.data.frame(cbind(unique(sample_data(PS.500.hell)$longitude), unique(sample_data(PS.500.hell)$latitude)))
+rownames(gps) <- unique(sample_data(PS.500.hell)$lake)
+
+map <- leaflet() %>%
+  setView(lng = -119, lat = 38.25, zoom = 10) %>%
+  addTiles() %>%
+  fitBounds(-118.75, 37.42, -119, 38.06) %>%
+  addMarkers(data = gps, lng = ~V1, lat = ~V2, popup = ~row.names(gps)) %>%
+  addMarkers(
+    lng = -118.7426, lat = 37.43153,
+    label = "Eastern Brook (3,155 m)",
+    labelOptions = labelOptions(noHide = T, direction = "left",
+      style = list(
+        "color" = "hotpink",
+        "font-family" = "serif",
+        "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
+        "font-size" = "12px",
+        "border-color" = "rgba(0,0,0,0.5)"))) %>%
+  addMarkers(
+    lng = -118.7444, lat = 37.43839,
+    label = "Serene (3,124 m)",
+    labelOptions = labelOptions(noHide = T, direction = "right",
+      style = list(
+        "color" = "green",
+        "font-family" = "sanserif",
+        "font-style" = "bold",
+        "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
+        "font-size" = "12px",
+        "border-color" = "rgba(0,0,0,0.5)"))) %>%
+  addMarkers(
+    lng = -118.8574, lat = 37.59009,
+    label = "Convict (2,315 m)",
+    labelOptions = labelOptions(noHide = T, direction = "right",
+      style = list(
+        "color" = "orange",
+        "font-family" = "serif",
+        "font-style" = "bold",
+        "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
+        "font-size" = "12px",
+        "border-color" = "rgba(0,0,0,0.5)"))) %>%
+   addMarkers(
+    lng = -119.2651, lat = 38.04698,
+    label = "Virginia (2,983 m)",
+    labelOptions = labelOptions(noHide = T, direction = "bottom",
+      style = list(
+        "color" = "gold",
+        "font-family" = "serif",
+        "font-style" = "bold",
+        "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
+        "font-size" = "12px",
+        "border-color" = "rgba(0,0,0,0.5)"))) %>%
+  addMarkers(
+    lng = -119.2703, lat = 38.05095,
+    label = "Blue (3,005 m)",
+    labelOptions = labelOptions(noHide = T, direction = "right",
+      style = list(
+        "color" = "blue",
+        "font-family" = "serif",
+        "font-style" = "bold",
+        "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
+        "font-size" = "12px",
+        "border-color" = "rgba(0,0,0,0.5)"))) %>%
+  addMarkers(
+    lng = -119.2770, lat = 38.04806,
+    label = "Cooney (3,116 m)",
+    labelOptions = labelOptions(noHide = T, direction = "left",
+      style = list(
+        "color" = "purple",
+        "font-family" = "serif",
+        "font-style" = "bold",
+        "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
+        "font-size" = "12px",
+        "border-color" = "rgba(0,0,0,0.5)")))
+map
+```
+
+
+Richness (observed and shannon) using PS.500 
+- look at richness by sample type (water vs. zooplankton)
+- look at how time and site effect richness
+- how does richness differ for individual taxa compared to water (it is much lower...)
+```{r alpha diversity plots - plot_richness}
+#richness by organism (or sample type i.e, water) -- not transformed, but rarefied
+
+richness.plot.samples <- plot_richness(PS.500, x="sample_type", measures=c("Observed", "Shannon"), color="sample_type") +
+  labs(y= "Alpha Diversity Measure", x = "Sample Type") + theme_bw() + 
+  geom_boxplot(aes(fill=sample_type), alpha=0.7) +
+  geom_point(aes(color=sample_type), alpha=0.5) +
+  scale_color_manual(values = c("lightsteelblue3", "navajowhite3"))+ guides(color="none") +
+  scale_fill_manual(values = c("lightsteelblue2", "navajowhite2"))+ guides(fill="none") +
+  theme(axis.text.x=element_text(size=9)) + theme(strip.text.x = element_text(size = 12))
+
+richness.plot.samples$layers <- richness.plot.samples$layers[-1] # remove the first layer of points 
+richness.plot.samples
+
+#####
+#richness by time_point
+alpha.plot.time <- plot_richness(PS.500, x="time_point", measures=c("Shannon")) + 
+  labs(y= "ASV Richness", x = "Sampling Time Point") + theme_bw() + 
+  geom_point(color="gray15", alpha=0.5) +
+  geom_boxplot(fill= "gray85", alpha=0.5) + 
+  theme(strip.text.x = element_text(size = 12))
+
+alpha.plot.time$layers <- alpha.plot.time$layers[-1] # remove the first layer of points 
+alpha.plot.time
+
+#Shannon diversity by Lake
+alpha.plot.location <- plot_richness(PS.500, x="lake", measures=c("Shannon")) +
+  labs(y= "Shannon Diversity", x = "Lake") + theme_bw() + 
+  geom_point(color="gray15", alpha=0.5) +
+  geom_boxplot(fill= "gray15", alpha=0.5) +
+  ylim(0,6) + theme(strip.text.x = element_text(size = 12))
+
+alpha.plot.location$layers <- alpha.plot.location$layers[-1] # remove the first layer of points 
+alpha.plot.location
+
+# group the above two plots
+alpha.time.lake<-plot_grid(alpha.plot.time, alpha.plot.location)
+
+#####
+#richness by organisms (zoop species and water)
+richness.plot.spp <- plot_richness(PS.500, x="organism", color="organism", measures=c("Observed", "Shannon")) +
+  labs(y= "Alpha Diversity Measure", x = "Sample Type") + 
+  geom_boxplot(aes(fill=organism), alpha=0.2) + guides(fill="none") +
+  geom_point(alpha=0.5) +
+  theme(axis.text.x=element_blank(), strip.text.x = element_text(size = 12)) + theme_bw()
+
+richness.plot.spp$layers <- richness.plot.spp$layers[-1] # remove the first layer of points 
+richness.plot.spp
+
+
+######
+# lets look at beta diversity and distance to centroid a bit: (zoop species and water)
+# using the rarefied, hellinger data here since beta diversity metric
+set.seed(10000)
+bc_500.hell.bd <- phyloseq::distance(PS.500.hell, method = "bray") # rarefied and hellinger transformed
+bc_beta.df <- as.data.frame(sample_data(PS.500.hell))
+
+# one approach
+bd<-betadisper(bc_500.hell.bd, bc_beta.df$organism, type="centroid")
+plot(bd, ellipse = TRUE, hull = FALSE, label.cex = 0.4, main="Distance to Centroids")
+dev.copy(pdf, "figures/bc_beta.df.pdf", height=6, width=6)
+dev.off()
+
+dist_to_centroids(bc_500.hell.bd, bc_beta.df$organism)
+
+
+# one approach
+bds<-betadisper(bc_water.hell.bd, bc_water.df$organism, type="centroid")
+plot(bds, ellipse = TRUE, hull = FALSE, label.cex = 0.4, main="Distance to Centroids")
+dev.copy(pdf, "figures/bc_beta.df.pdf", height=6, width=6)
+dev.off()
+
+#
+bd$group.distances # this is Average distance to centroid for each group
+scores(bd, 1:2, display = "centroids") # this is the centroid for each group
+bd.df <- data.frame(Distance_to_centroid = bd$distances, organism=bd$group) # dataframe
+
+betadisp.org.plot<- ggplot(data=bd.df, aes(x=organism, y=Distance_to_centroid, color=organism)) +
+  geom_boxplot(aes(fill=organism), alpha=0.2) + guides(fill="none") +
+  geom_point(alpha=0.5) + 
+  ylim(0,0.8) +
+  guides(color=guide_legend(title=""))+ xlab("Sample Type")+ ylab("Distance to centroid") +
+  ggtitle("Betadispersion") +
+  theme(axis.text.x=element_blank()) + theme_bw() 
+
+####
+# combine all richness and betadispersion plots
+alpha.plots<-plot_grid(alpha.time.lake, richness.plot.samples, richness.plot.spp + guides(color="none"),
+                       betadisp.org.plot, ncol=4, rel_widths=c(11,8,11,8))
+alpha.plots
+dev.copy(pdf, "figures/alpha.plots.pdf", height=6, width=24)
+dev.off()
+
+```
+
+
+```{r Bray curtis distance matrix}
+# just zoops, from rarefied data, hellinger transformed
+PS.zoops = subset_samples(PS.500.hell, sample_type=="Zooplankton")
+
+# just water, from rarefied data, hellinger transformed
+PS.water = subset_samples(PS.500.hell, sample_type=="Water")
+
+###### 
+# calculating bray curtis distances
+# we use the hellinger transformation to avoid/deal with the arch effect
+# we will use rarefied data (PS.500) for alpha diversity, but the transformed PS.500.hell for beta diversity
+
+set.seed(10000)
+bc <- phyloseq::distance(PS.fin, method = "bray") # raw full data
+
+set.seed(10000)
+bc_500 <- phyloseq::distance(PS.500, method = "bray") # rarefied data
+
+set.seed(10000)
+bc_500.hell <- phyloseq::distance(PS.500.hell, method = "bray") # rarefied and hellinger transformed
+
+
+# both of the below are using rarefied and hellinger transformed data: PS.zoops and PS.water
+set.seed(10000)
+bc_zoops <- phyloseq::distance(PS.zoops, method = "bray")
+
+set.seed(10000)
+bc_water <- phyloseq::distance(PS.water, method = "bray")
+```
+
+
+```{r metaMDS, scores, and PERMANOVAS from BC distance matrices}
+#################
+# rarefied
+set.seed(10000)
+nmds.rarhell <- metaMDS(bc_500.hell,
+          distance = "bray",
+          k = 3,
+          maxit = 999, 
+          wascores = TRUE)
+
+sp.scores.hell <- as.data.frame(scores(nmds.rarhell))
+nmds.rarhell.df <- merge(sample_data(PS.500.hell), sp.scores.hell, by = 'row.names', all = TRUE)
+
+broad.model.full <- adonis2(bc_500.hell ~ lake*time_point*organism, data = nmds.rarhell.df, permutations = 1000)
+broad.model.full
+
+env.model.full <- adonis2(bc_500.hell ~ latitude + elevation_m + temp_C + pH + cond + DOC + chla_ug.L + DO_perc, data = nmds.rarhell.df, permutations = 1000)
+env.model.full
+
+#test for beta dispersion
+anova(betadisper(bc_500.hell, nmds.rarhell.df$lake)) #  significant (barely)
+anova(betadisper(bc_500.hell, nmds.rarhell.df$time_point)) #  significant
+anova(betadisper(bc_500.hell, nmds.rarhell.df$organism)) # very significant
+
+
+##################
+# zoops only
+set.seed(10000)
+nmds3 <- metaMDS(bc_zoops,
+          distance = "bray",
+          k = 3,
+          maxit = 999, 
+          wascores = TRUE)
+
+species.scores3 <- as.data.frame(scores(nmds3))
+nmds.merge3 <- merge(sample_data(PS.zoops), species.scores3, by = 'row.names', all = TRUE)
+
+broad.model3 <- adonis2(bc_zoops ~ time_point*lake*organism, data = nmds.merge3, permutations = 1000)
+broad.model3
+
+env.model3 <- adonis2(bc_zoops ~ latitude + elevation_m + temp_C + pH + cond + DOC + chla_ug.L + DO_perc, data = nmds.merge3, permutations = 1000)
+env.model3 # latitude is best 
+
+anova(betadisper(bc_zoops, nmds.merge3$time_point)) # significant
+
+
+#######################
+# water only
+set.seed(10000)
+nmds4 <- metaMDS(bc_water,
+          distance = "bray",
+          k = 3,
+          maxit = 999, 
+          wascores = TRUE)
+
+species.scores4 <- as.data.frame(scores(nmds4))
+nmds.merge4 <- merge(sample_data(PS.water), species.scores4, by = 'row.names', all = TRUE)
+
+broad.model4 <- adonis2(bc_water ~ time_point * lake, data = nmds.merge4, permutations = 1000)
+broad.model4
+
+env.model4 <- adonis2(bc_water ~ latitude + elevation_m + temp_C + pH + cond + DOC + chla_ug.L + DO_perc, data = nmds.merge4, permutations = 1000)
+env.model4 #latitude, temp, chlorophyll
+
+anova(betadisper(bc_water, nmds.merge4$time_point)) #not significant
+anova(betadisper(bc_water, nmds.merge4$lake)) #not significant
+```
+
+MAY NEED TO DELETE OR REPURPOSE THIS SECTION
+```{r Hellinger transformation, eval=FALSE}
+# Hellinger (square root) transform the data!
+PS.hell = transform_sample_counts(PS.fin, function(x) x^0.5)
+
+set.seed(10000)
+# Bray Curtis dissimilarity matrix
+bc.hell <- phyloseq::distance(PS.hell, method = "bray")
+
+# making NMDS ordination
+set.seed(10000)
+nmds.hell <- metaMDS(bc.hell,
+          distance = "bray",
+          k = 3,
+          maxit = 999, 
+          wascores = TRUE)
+stress_result <- nmds.hell$stress #0.176
+species.scores.hell <- as.data.frame(scores(nmds.hell))
+nmds.merge.hell <- merge(sample_data(PS.hell), species.scores.hell, by = 'row.names', all = TRUE)
+
+
+# test the effects of lake, time, and sample type (water, Cladocera, Copepoda) on the BC dissimilarities of the microbial communities
+set.seed(10000)
+hell.model <- adonis2(bc.hell ~ lake*time_point + phy_group, data = nmds.merge.hell, permutations = 1000)
+hell.model
+
+# test the effects of spatial and environmental variables on the BC dissimilarities of the microbial communities
+adonis2(bc.hell ~ temp_C + pH + DO_perc + chla_ug.L + latitude + longitude + DOC + cond + elevation_m, data = nmds.merge.hell, permutations = 1000)
+set.seed(10000)
+hell.model.env <- adonis2(bc.hell ~ temp_C, data = nmds.merge.hell, permutations = 1000)
+hell.model.env
+
+
+install.packages('devtools')
+library(devtools)
+install_github("pmartinezarbizu/pairwiseAdonis/pairwiseAdonis") 
+library(pairwiseAdonis)
+
+# post hoc pairwise comparison to see what's driving the significance:
+pairwise.adonis2(bc.hell ~ time_point*phy_group, data = nmds.merge.hell)
+set.seed(10000)
+pairwise.adonis2(bc.hell ~ phy_group, data = nmds.merge.hell)
+pairwise.adonis2(bc.hell ~ lake, data = nmds.merge.hell)
+
+# beta dispersion test
+permutest(betadisper(bc.hell, nmds.merge.hell$lake), pairwise = T)
+permutest(betadisper(bc.hell, nmds.merge.hell$phy_group), pairwise = T)
+permutest(betadisper(bc.hell, nmds.merge.hell$temp_C), pairwise = T)
+permutest(betadisper(bc.hell, nmds.merge.hell$time_point), pairwise = T)
+# time is significant in the betadisper, sample_type and phy_group are not
+
+#testing this anosim function out since time did not pass homogeneity test
+#anosim(bc.hell, nmds.merge.hell$time_point, permutations = 1000)
+
+```
+
+
+```{r Env. effects and averages of ASV Richness and Diversity}
+
+######### zoops AND water
+# measure richness and shannon diversity
+# get out of phyloseq
+Shan.rich<-estimate_richness(PS.500, measures =c("Observed", "Shannon")) # using rarified transformed data
+rownames(Shan.rich)<-sapply(str_remove_all(rownames(Shan.rich),"X"),"[") # will remove the X added to the rownames
+Shan.rich.df<-merge(data.frame(sample_data(PS.500)), Shan.rich, by = "row.names") # merge 
+
+
+# bell curve/ normally distributed, so we can use anova
+hist(Shan.rich.df$Shannon, main="Shannon diversity", xlab="", breaks=10)
+shapiro.test(Shan.rich.df$Shannon)
+
+# Testing effects on Shannon diversity index
+Anova(lm(Shannon ~ lake, data = Shan.rich.df))
+shan.anova <- aov(lm(Shannon ~ lake, data = Shan.rich.df))
+tukey <- TukeyHSD(shan.anova) 
+cld <- multcompLetters4(shan.anova, tukey)
+
+
+# testing effects of environmental variables on Shannon diversity
+a.div.mod <- lm(Shannon ~ temp_C + DOC + elevation_m + chla_ug.L + pH + DO_perc + cond, data = Shan.rich.df)
+a.div.AIC <- MASS::stepAIC(a.div.mod, direction = "both")
+summary(lm(Shannon ~ elevation_m + DO_perc + cond, data = Shan.rich.df))
+
+ggscatter(Shan.rich.df, x = "cond", y = "Shannon",
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson", cor.coef.coord = c(0.65,2.98),
+          xlab = "Temperature", ylab = "Zooplankton Community Shannon Diversity")
+
+
+# summaryBy for median, mean, and standard error of the Shannon diversity by lake
+lake_div <- summaryBy(Shannon ~ lake, data = Shan.rich.df, FUN = c(median, mean, se))
+
+
+# plot Shannon diversity average across lakes
+bargraph.CI(lake, Shannon, data = Shan.rich.df,
+                     xlab = "Sample Type", ylab = "Shannon Diversity", cex.lab = 1.5, x.leg = 2,
+                     col = "black", angle = 45, cex.names = 1.25,
+                     density = c(0,20), legend = TRUE)
+
+```
+
+
+```{r environmental correlations}
+
+cor.test(sample_data(PS.500.hell)$latitude, sample_data(PS.500.hell)$chla_ug.L)
+
+ggscatter(sample_data(PS.500.hell), x = "elevation_m", y = "DOC",
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "elevation (m)", ylab = "DOC")
+
+ggscatter(sample_data(PS.500.hell), x = "temp_C", y = "DOC",
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "temperature", ylab = "DOC")
+
+#significant
+ggscatter(sample_data(PS.500.hell), x = "elevation_m", y = "chla_ug.L", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "elevation (m)", ylab = "chla")
+
+# significant
+ggscatter(sample_data(PS.500.hell), x = "elevation_m", y = "temp_C", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "elevation (m)", ylab = "Temperature (C)")
+
+# significant
+ggscatter(sample_data(PS.500.hell), x = "latitude", y = "temp_C",
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "latitude", ylab = "Temperature")
+
+# significant
+ggscatter(sample_data(PS.500.hell), x = "latitude", y = "DOC", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "latitude", ylab = "DOC")
+
+#significant
+ggscatter(sample_data(PS.500.hell), x = "latitude", y = "chla_ug.L", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "latitude", ylab = "chla")
+
+ggscatter(sample_data(PS.500.hell), x = "DOC", y = "chla_ug.L", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "DOC", ylab = "chla")
+
+#significant
+ggscatter(sample_data(PS.500.hell), x = "temp_C", y = "pH", color = "lake",
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "temp_C", ylab = "pH")
+
+ggscatter(sample_data(PS.500.hell), x = "latitude", y = "DO_perc",
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "latitude", ylab = "DO")
+
+ggscatter(sample_data(PS.500.hell), x = "latitude", y = "chla_ug.L",
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "latitude", ylab = "Chl a")
+
+ggscatter(sample_data(PS.500.hell), x = "latitude", y = "cond",
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "latitude", ylab = "Conductivity")
+
+ggscatter(sample_data(PS.500.hell), x = "latitude", y = "pH",
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "latitude", ylab = "pH")
+```
+
+
+```{r final envfit}
+# get env. data
+env.hell<- nmds.rarhell.df %>%
+  dplyr::select(latitude, longitude, elevation_m, temp_C, chla_ug.L, pH, DO_perc, spc, cond, DOC, TDN, TDP)
+
+# run the envfit function
+fit.env.hell <- envfit(nmds.rarhell, env.hell, na.rm = TRUE)
+
+scrs <- as.data.frame(scores(nmds.rarhell, display = "sites"))
+
+# make the plot
+spp.scrs <- as.data.frame(scores(fit.env.hell, display = "vectors"))
+spp.scrs.test <- cbind(spp.scrs, r=fit.env.hell$vectors[2], pvals=fit.env.hell$vectors[4], Envfact = rownames(spp.scrs))
+names(spp.scrs.test)[names(spp.scrs.test) == 'r'] <- 'r2' # rename bc vector has naming issues
+
+# subset to keep only those Envfactors that are significant 
+spp.scrs.signif<-spp.scrs.test[spp.scrs.test$pvals< 0.05, ]
+
+# env fit with NMDS
+NMDS.env <- ggplot(nmds.rarhell.df) +
+  geom_point(nmds.rarhell.df, mapping = aes(x = NMDS1, y = NMDS2, colour = organism)) +
+  coord_fixed() + ## need aspect ratio of 1!
+  geom_segment(data = spp.scrs.signif,
+               aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2),
+               arrow = arrow(length = unit(0.25, "cm")), colour = "grey") +
+  geom_text(data = spp.scrs.signif, aes(x = NMDS1, y = NMDS2, label = Envfact),
+            size = 3)+
+  theme_classic()
+
+```
+
+
+```{r plotting lake elevations to visualize spatial differences}
+
+elevations <- MetaD.SQ.Env %>%
+  arrange(elevation_m) %>%
+  mutate(lake = factor(lake, levels=c("Eastern Brook", "Serene", "Convict", "Virginia", "Blue", "Cooney"))) %>%
+  ggplot(aes(x=lake, y=elevation_m, color = lake)) +
+  geom_point(aes(size = 1.3)) +
+  theme_classic() +
+  xlab("Lake") +
+  ylab("Elevation (m)") +
+  ylim(0,3500) +
+  theme(axis.text.x=element_text(size=20)) + theme(axis.title.x=element_text(size=20)) + 
+  theme(axis.text.y=element_text(size=20)) + theme(axis.title.y=element_text(size=20)) +
+  theme(axis.text.x = element_text(angle = 45, vjust=1, hjust=1)) +
+  scale_color_manual(values = c("orange2", "violet", "darkorchid4", "darkgreen", "royalblue", "chartreuse2"))
+elevations
+dev.copy(pdf, "reanalysis/figures/elevations.pdf", height=5, width=5)
+dev.off()
+```
+
+
+```{r mantel test, geographic distance}
+# to calculate geographic distances between lakes
+# geographic distance dissim matrix - adapted from weinstein et al 
+gps <- as.data.frame(cbind(sample_data(PS.500.hell)$longitude, sample_data(PS.500.hell)$latitude))
+spatial_dist <- distm(gps, fun = distGeo)
+rownames(spatial_dist) <- sample_data(PS.500.hell)$lake
+colnames(spatial_dist) <- sample_data(PS.500.hell)$lake
+
+# converting distances to km 
+spatial_dist_km <- spatial_dist/1000
+dim(spatial_dist_km)
+spatial_dist <- as.dist(spatial_dist)
+spatial_dist_km <- as.dist(spatial_dist_km) # make distance matrix
+
+# run the Mantel test
+mantel <-vegan::mantel(spatial_dist_km, bc_500.hell)
+# observation value in the output is the observed correlation (r) and shows sign (pos or neg corr.)
+
+# plotting
+dist.df <- as.data.frame(cbind(spatial_dist_km, bc_500.hell))
+
+dist_plot <- ggplot(dist.df, aes(x=spatial_dist_km, y=bc_500.hell)) +
+  geom_point(size=0.8,alpha=0.5) +
+  geom_smooth(method = "glm", formula = y~x,
+              method.args = list(family = gaussian(link = 'log')), lwd=0.7, se = T)+ 
+  xlab("Geographic distance (km) between lakes") + 
+  ylab("Bray-Curtis dissimilarities")
+dist_plot
+dev.copy(pdf, "reanalysis/figures/dist_plot.pdf", height=4, width=5)
+dev.off() 
+
+
+
+# Attempting to also run a Procrustes test
+norm_distances <- decostand(spatial_dist_km, method = "normalize")
+norm_dissimilarities <- decostand(bc_500.hell, method = "normalize")
+std_distances <- decostand(norm_distances, method = "standardize")
+std_dissimilarities <- decostand(norm_dissimilarities, method = "standardize")
+# Perform Procrustes analysis
+procrustes_results <- protest(std_distances, std_dissimilarities)
+# Extract transformed coordinates
+transformed_coordinates <- procrustes_results$points
+
+```
+
+
+```{r MDS plots by time point}
+# Time 1
+
+T1 <- subset_samples(PS.500.hell, time_point=="1")
+ORD.T1 <- ordinate(T1, method='MDS', distance='bray')
+
+
+MDS.ord.T1.lake<-plot_ordination(
+  physeq = T1,                                                   
+  ordination = ORD.T1) +                                                
+  geom_point(aes(color = lake, shape=organism), size = 3) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=lake)) +
+  ggtitle("Time1") +
+  scale_color_brewer(palette = "RdBu") +
+  scale_fill_brewer(palette = "RdBu") +
+  theme_classic()     
+MDS.ord.T1.lake
+
+MDS.ord.T1.org<-plot_ordination(
+  physeq = T1,                                                   
+  ordination = ORD.T1) +                                                
+  geom_point(aes(color = organism, shape=lake), size = 3) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=organism)) +
+  ggtitle("Time1") +
+  theme_classic()     
+MDS.ord.T1.org
+
+# Time 2
+T2<- subset_samples(PS.500.hell, time_point=="2")
+ORD.T2 <- ordinate(T2, method='MDS', distance='bray')
+MDS.ord.T2.lake<-plot_ordination(
+  physeq = T2,                                                   
+  ordination = ORD.T2) +                                                
+  geom_point(aes(color = lake, shape=organism), size = 3) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=lake)) +
+  ggtitle("Time2") +
+  scale_color_brewer(palette = "RdBu") +
+  scale_fill_brewer(palette = "RdBu") +
+  theme_classic()     
+MDS.ord.T2.lake
+
+MDS.ord.T2.org<-plot_ordination(
+  physeq = T2,                                                   
+  ordination = ORD.T2) +                                                
+  geom_point(aes(color = organism, shape=lake), size = 3) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=organism)) +
+  ggtitle("Time2") +
+  theme_classic()     
+MDS.ord.T2.org
+
+
+# Time 3
+T3<- subset_samples(PS.500.hell, time_point=="3")
+ORD.T3 <- ordinate(T3, method='MDS', distance='bray')
+MDS.ord.T3.lake<-plot_ordination(
+  physeq = T3,                                                   
+  ordination = ORD.T3) +                                                
+  geom_point(aes(color = lake, shape=organism), size = 3) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=lake)) +
+  ggtitle("Time3") +
+  scale_color_brewer(palette = "RdBu") +
+  scale_fill_brewer(palette = "RdBu") +
+  theme_classic()     
+MDS.ord.T3.lake
+
+MDS.ord.T3.org<-plot_ordination(
+  physeq = T3,                                                   
+  ordination = ORD.T3) +                                                
+  geom_point(aes(color = organism, shape=lake), size = 3) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=organism)) +
+  ggtitle("Time3") +
+  theme_classic()     
+MDS.ord.T3.org
+
+
+# Time 4
+T4<- subset_samples(PS.500.hell, time_point=="4")
+ORD.T4 <- ordinate(T4, method='MDS', distance='bray')
+
+MDS.ord.T4.lake<-plot_ordination(
+  physeq = T4,                                                   
+  ordination = ORD.T4) +                                                
+  geom_point(aes(color = lake, shape=organism), size = 3) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=lake)) +
+  ggtitle("Time4") +
+  scale_color_brewer(palette = "RdBu") +
+  scale_fill_brewer(palette = "RdBu") +
+  theme_classic()     
+MDS.ord.T4.lake
+
+MDS.ord.T4.org<-plot_ordination(
+  physeq = T4,                                                   
+  ordination = ORD.T4) +                                                
+  geom_point(aes(color = organism, shape=lake), size = 3) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=organism)) +
+  ggtitle("Time4") +
+  theme_classic()     
+MDS.ord.T4.org
+
+
+# Time 5
+T5 <- subset_samples(PS.500.hell, time_point=="5")
+ORD.T5 <- ordinate(T5, method='MDS', distance='bray')
+MDS.ord.T5.lake<-plot_ordination(
+  physeq = T5,                                                   
+  ordination = ORD.T5) +                                                
+  geom_point(aes(color = lake, shape=organism), size = 3) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=lake)) +
+  ggtitle("Time5") +
+  scale_color_brewer(palette = "RdBu") +
+  scale_fill_brewer(palette = "RdBu") +
+  theme_classic()     
+MDS.ord.T5.lake
+
+MDS.ord.T5.org<-plot_ordination(
+  physeq = T5,                                                   
+  ordination = ORD.T5) +                                                
+  geom_point(aes(color = organism, shape=lake), size = 3) +    
+  stat_ellipse(level=0.9, linetype = 2, aes(color=organism)) +
+  ggtitle("Time5") +
+  theme_classic()     
+MDS.ord.T5.org
+
+
+# now put them all together
+combined.mds <- plot_grid(
+          MDS.ord.T1.lake + theme(axis.title.y=element_text(size=8)) + ggtitle("Time 1: Lake Column"),
+          MDS.ord.T1.org + theme(axis.title.y=element_text(size=8)) + ggtitle("Time 1: Taxa Column"),
+          MDS.ord.T2.lake + theme(axis.title.y=element_text(size=8)),
+          MDS.ord.T2.org + theme(axis.title.y=element_text(size=8)),
+          MDS.ord.T3.lake + theme(axis.title.y=element_text(size=8)),
+          MDS.ord.T3.org + theme(axis.title.y=element_text(size=8)),
+          MDS.ord.T4.lake + theme(axis.title.y=element_text(size=8)),
+          MDS.ord.T4.org + theme(axis.title.y=element_text(size=8)),
+          MDS.ord.T5.lake + theme(axis.title.y=element_text(size=8)),
+          MDS.ord.T5.org + theme(axis.title.y=element_text(size=8)),
+          ncol=2)
+combined.mds
+dev.print(pdf, "reanalysis/figures/combined.mds.pdf", height=20, width=10)
+dev.off()
+ 
+```
+
+
+```{r General NMDS (time, lake, basin, etc.)}
+
+nmds.time <- ggplot(nmds.rarhell.df, aes(x=NMDS1, y=NMDS2, color = time_point)) +
+  geom_point(aes(color = time_point), size = 2) + 
+  stat_ellipse(level=0.9, lwd = 1, linetype = 2, aes(color=time_point)) +
+  scale_color_manual(values = c("dodgerblue","coral", "purple2", "turquoise", "orange2")) + 
+  ggtitle("by Time, pooled") +
+  theme_bw()
+ 
+nmds.lake <- ggplot(nmds.rarhell.df, aes(x=NMDS1, y=NMDS2)) +
+  geom_point(aes(color = lake), size = 2) + 
+  stat_ellipse(level=0.9, lwd = 1, linetype = 2, aes(color=lake)) +
+  scale_color_brewer(palette = "RdBu") +
+  scale_fill_brewer(palette = "RdBu") +
+  ggtitle("by Lake, pooled") +
+  theme_bw()
+
+nmds.basin <- ggplot(nmds.rarhell.df, aes(x=NMDS1, y=NMDS2))+
+  geom_point(aes(color = basin), size = 2) + 
+  stat_ellipse(level=0.9, linetype = 2, aes(color=basin)) +
+  ggtitle("by Basin, pooled") +
+  theme_bw()
+
+nmds.elevation <- ggplot(nmds.rarhell.df, aes(x=NMDS1, y=NMDS2, color = elev.cat)) +
+  geom_point(aes(color = elev.cat), size = 2) + 
+  stat_ellipse(level=0.9, linetype = 2, aes(color=elev.cat)) +
+  scale_color_manual(values=c("orchid", "goldenrod2"))+
+  ggtitle("by Elevation, pooled") +
+  theme_bw()
+
+nmds.organism <- ggplot(nmds.rarhell.df, aes(x=NMDS1, y=NMDS2, color = organism)) +
+  geom_point(aes(color = organism), size = 2) + 
+  stat_ellipse(level=0.9, linetype = 2, aes(color=organism)) +
+  ggtitle("by Taxa, pooled") +
+  theme_bw()
+
+nmds.phy_group <- ggplot(nmds.rarhell.df, aes(x=NMDS1, y=NMDS2, color = phy_group)) +
+  geom_point(aes(color = phy_group), size = 2) + 
+  stat_ellipse(level=0.9, lwd = 1, linetype = 2, aes(color=phy_group)) +
+  theme_bw() +
+  scale_color_manual(values = c("orange", "firebrick", "royalblue3")) +
+  ggtitle("by Phygroup, pooled")
+
+phy_group_plots_combined <- plot_grid(
+  nmds.time, nmds.lake, nmds.elevation,
+  nmds.basin, nmds.organism, nmds.phy_group,  nrow=2, ncol=3, labels = c("A","B", "C", "D", "E", "F", ""))
+
+phy_group_plots_combined
+dev.print(pdf, "reanalysis/figures/NMDS.groupeffects.pdf", height=12, width=18)
+dev.off()
+
+```
+
+
+```{r NMDS plots broken down by each lake and time point}
+centroid <- nmds.rarhell.df %>% 
+  group_by(time_point) %>%
+  summarize(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
+str(nmds.rarhell.df)
+
+
+
+nmds.convict <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Convict", ], aes(x=NMDS1, y=NMDS2)) +
+  geom_point(aes(color = time_point, shape = phy_group), size = 2.5) +
+  stat_ellipse(level=0.9, lwd = 0.8, linetype = 2, aes(color = time_point)) +
+  scale_color_manual(values = c("blue","red", "purple2", "turquoise", "orange2")) +
+  theme_bw() + ggtitle("Convict") +
+  theme(axis.text.x=element_text(size=13)) + theme(axis.title.x=element_text(size=11)) +
+  theme(axis.text.y=element_text(size=13)) + theme(axis.title.y=element_text(size=11)) +
+  theme(plot.title = element_text(size = 20)) +
+  theme(legend.key.size = unit(1, 'cm'), #change legend key size
+        legend.key.height = unit(1, 'cm'), #change legend key height
+        legend.key.width = unit(1, 'cm'), #change legend key width
+        legend.title = element_text(size=13), #change legend title font size
+        legend.text = element_text(size=11)) #change legend text font size
+nmds.convict
+dev.print(pdf, "reanalysis/figures/nmds.convict.pdf", height=10, width=15)
+dev.off
+
+nmds.east.brook <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Eastern Brook", ], aes(x=NMDS1, y=NMDS2)) +
+  geom_point(aes(color = time_point, shape = phy_group), size = 2.5) +
+  stat_ellipse(level=0.9, lwd = 0.8, linetype = 2, aes(color = time_point)) +
+  scale_color_manual(values = c("blue","red", "purple2", "turquoise", "orange2")) +
+  theme_bw() + ggtitle("Eastern Brook") +
+  theme(axis.text.x=element_text(size=13)) + theme(axis.title.x=element_text(size=11)) +
+  theme(axis.text.y=element_text(size=13)) + theme(axis.title.y=element_text(size=11)) +
+  theme(plot.title = element_text(size = 20)) +
+  theme(legend.key.size = unit(1, 'cm'), #change legend key size
+        legend.key.height = unit(1, 'cm'), #change legend key height
+        legend.key.width = unit(1, 'cm'), #change legend key width
+        legend.title = element_text(size=13), #change legend title font size
+        legend.text = element_text(size=11)) #change legend text font size
+nmds.east.brook
+dev.print(pdf, "reanalysis/figures/nmds.east.brook.pdf", height=10, width=15)
+dev.off
+
+nmds.serene <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Serene", ], aes(x=NMDS1, y=NMDS2)) +
+  geom_point(aes(color = time_point, shape = phy_group), size = 2.5) +
+  stat_ellipse(level=0.9, lwd = 0.8, linetype = 2, aes(color = time_point)) +
+  scale_color_manual(values = c("blue","red", "purple2", "turquoise", "orange2")) +
+  theme_bw() + ggtitle("Serene") +
+  theme(axis.text.x=element_text(size=13)) + theme(axis.title.x=element_text(size=11)) +
+  theme(axis.text.y=element_text(size=13)) + theme(axis.title.y=element_text(size=11)) +
+  theme(plot.title = element_text(size = 20)) +
+  theme(legend.key.size = unit(1, 'cm'), #change legend key size
+        legend.key.height = unit(1, 'cm'), #change legend key height
+        legend.key.width = unit(1, 'cm'), #change legend key width
+        legend.title = element_text(size=13), #change legend title font size
+        legend.text = element_text(size=11)) #change legend text font size
+nmds.serene
+dev.print(pdf, "reanalysis/figures/nmds.serene.pdf", height=10, width=15)
+dev.off
+
+nmds.cooney <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Cooney", ], aes(x=NMDS1, y=NMDS2)) +
+  geom_point(aes(color = time_point, shape = phy_group), size = 2.5) +
+  stat_ellipse(level=0.9, lwd = 0.8, linetype = 2, aes(color = time_point)) +
+  scale_color_manual(values = c("blue","red", "purple2", "turquoise", "orange2")) +
+  theme_bw() + ggtitle("Cooney") +
+  theme(axis.text.x=element_text(size=13)) + theme(axis.title.x=element_text(size=11)) +
+  theme(axis.text.y=element_text(size=13)) + theme(axis.title.y=element_text(size=11)) +
+  theme(plot.title = element_text(size = 20)) +
+  theme(legend.key.size = unit(1, 'cm'), #change legend key size
+        legend.key.height = unit(1, 'cm'), #change legend key height
+        legend.key.width = unit(1, 'cm'), #change legend key width
+        legend.title = element_text(size=13), #change legend title font size
+        legend.text = element_text(size=11)) #change legend text font size
+nmds.cooney
+dev.print(pdf, "reanalysis/figures/nmds.cooney.pdf", height=10, width=15)
+dev.off
+
+nmds.blue <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Blue", ], aes(x=NMDS1, y=NMDS2)) +
+  geom_point(aes(color = time_point, shape = phy_group), size = 2.5) +
+  stat_ellipse(level=0.9, lwd = 0.8, linetype = 2, aes(color = time_point)) +
+  scale_color_manual(values = c("blue","red", "purple2", "turquoise", "orange2")) +
+  theme_bw() + ggtitle("Blue") +
+  theme(axis.text.x=element_text(size=13)) + theme(axis.title.x=element_text(size=11)) +
+  theme(axis.text.y=element_text(size=13)) + theme(axis.title.y=element_text(size=11)) +
+  theme(plot.title = element_text(size = 20)) +
+  theme(legend.key.size = unit(1, 'cm'), #change legend key size
+        legend.key.height = unit(1, 'cm'), #change legend key height
+        legend.key.width = unit(1, 'cm'), #change legend key width
+        legend.title = element_text(size=13), #change legend title font size
+        legend.text = element_text(size=11)) #change legend text font size
+nmds.blue
+dev.print(pdf, "reanalysis/figures/nmds.blue.pdf", height=10, width=15)
+dev.off
+
+nmds.virginia <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Virginia", ], aes(x=NMDS1, y=NMDS2)) +
+  geom_point(aes(color = time_point, shape = phy_group), size = 2.5) +
+  stat_ellipse(level=0.9, lwd = 0.8, linetype = 2, aes(color = time_point)) +
+  scale_color_manual(values = c("blue","red", "purple2", "turquoise", "orange2")) +
+  theme_bw() + ggtitle("Virginia") +
+  theme(axis.text.x=element_text(size=13)) + theme(axis.title.x=element_text(size=11)) +
+  theme(axis.text.y=element_text(size=13)) + theme(axis.title.y=element_text(size=11)) +
+  theme(plot.title = element_text(size = 20)) +
+  theme(legend.key.size = unit(1, 'cm'), #change legend key size
+        legend.key.height = unit(1, 'cm'), #change legend key height
+        legend.key.width = unit(1, 'cm'), #change legend key width
+        legend.title = element_text(size=13), #change legend title font size
+        legend.text = element_text(size=11)) #change legend text font size
+nmds.virginia
+dev.print(pdf, "phyloseq analysis/figures/nmds.virginia.pdf", height=10, width=15)
+dev.off
+
+combined.nmds.lakes <- ggarrange(nmds.convict,
+          nmds.east.brook,
+          nmds.serene,
+          nmds.cooney,
+          nmds.blue,
+          nmds.virginia,
+          plot_layout(guides="collect"), labels=NULL, common.legend = TRUE, 
+          legend="bottom", align="hv", 
+          font.label = list(size=10, color="black", family=NULL, position="top", labels="auto"))
+combined.nmds.lakes
+dev.print(pdf, "reanalysis/figures/combined.nmds.lakes.pdf", height=10, width=15)
+dev.off
+
+nmds.cladocera.time <- ggplot(nmds.rarhell.df[nmds.rarhell.df$phy_group == "cladocera", ], aes(x=NMDS1, y=NMDS2)) +
+  geom_point(aes(color = time_point), size = 4) +
+  stat_ellipse(level=0.9, lwd = 1, linetype = 2, aes(color = time_point)) +
+  scale_color_manual(values = c("orangered", "turquoise2", "navy", "violetred", "lightslateblue")) + 
+  theme(axis.text.x= element_text(size = 15)) +
+  theme(axis.text.y= element_text(size = 15)) +
+  theme_bw() +
+  theme(legend.key.size = unit(1, 'cm'), #change legend key size
+        legend.key.height = unit(1, 'cm'), #change legend key height
+        legend.key.width = unit(1, 'cm'), #change legend key width
+        legend.title = element_text(size=20), #change legend title font size
+        legend.text = element_text(size=18)) +#change legend text font size 
+  ggtitle("Cladocera")
+nmds.cladocera.time
+dev.print(pdf, "reanalysis/figures/nmds.cladocera.time.pdf", height=10, width=15)
+dev.off
+
+nmds.copepoda.time <- ggplot(nmds.rarhell.df[nmds.rarhell.df$phy_group == "copepoda", ], aes(x=NMDS1, y=NMDS2)) +
+  geom_point(aes(color = time_point), size = 4) +
+  stat_ellipse(level=0.9, lwd= 1, linetype = 2, aes(color = time_point)) +
+  scale_color_manual(values = c("orangered", "turquoise2", "navy", "violetred", "lightslateblue")) + 
+  theme_bw() +
+  theme(legend.key.size = unit(1, 'cm'), #change legend key size
+        legend.key.height = unit(1, 'cm'), #change legend key height
+        legend.key.width = unit(1, 'cm'), #change legend key width
+        legend.title = element_text(size=20), #change legend title font size
+        legend.text = element_text(size=18)) + #change legend text font size
+  ggtitle("Copepoda")
+nmds.copepoda.time
+dev.print(pdf, "phyloseq analysis/figures/nmds.copepoda.time.pdf", height=10, width=15)
+dev.off
+
+nmds.water.time <- ggplot(nmds.rarhell.df[nmds.rarhell.df$sample_type == "Water", ], aes(x=NMDS1, y=NMDS2)) +
+  geom_point(aes(color = time_point), size = 3) +
+  stat_ellipse(level=0.9, lwd =1, linetype = 2, aes(color = time_point)) +
+  scale_color_manual(values = c("orangered", "turquoise2", "navy", "violetred", "lightslateblue")) + 
+  theme(legend.key.size = unit(1, 'cm'), #change legend key size
+        legend.key.height = unit(1, 'cm'), #change legend key height
+        legend.key.width = unit(1, 'cm'), #change legend key width
+        legend.title = element_text(size=20), #change legend title font size
+        legend.text = element_text(size=18)) + #change legend text font size
+  theme_bw() +
+  ggtitle("Water")
+nmds.water.time
+dev.print(pdf, "phyloseq analysis/figures/nmds.water.time.pdf", height=10, width=15)
+dev.off
+  
+
+```
+
+
+```{r capscale and dbRDA --> having a hard time figuring this out}
+# Trying to find environmental variables that signiificantly explained variation in the 
+# 16S community composition
+
+# Spatial variables were calculated using trend-surface analysis
+# calculated second-order orthogonal polynomial terms (latitude, longitude, latitude  × longitude, 
+# latitude2, longitude2) from UTM coordinates for  each lake using the “poly” function in R.
+library(sp)
+install.packages('rgdal')
+library(rgdal)
+gps <- as.data.frame(cbind(sample_data(PS.500)$longitude, sample_data(PS.500)$latitude))
+coordinates(gps) <- c("V1", "V2")
+# Define the coordinate reference system (CRS) for the latitude and longitude data
+proj4string(gps) <- CRS("+proj=longlat +datum=WGS84")
+# Convert latitude and longitude to UTM coordinates
+utm_coords <- spTransform(gps, CRS("+proj=utm +zone=11 +datum=WGS84"))
+# Extract the UTM coordinates from the transformed object
+utm_easting <- utm_coords@coords[, 1]
+utm_northing <- utm_coords@coords[, 2]
+# Create a data frame for the UTM coordinates
+coord_df <- data.frame(cbind(utm_easting, utm_northing))
+# Calculate second-order orthogonal polynomial terms for latitude and longitude
+poly_terms <- poly(coord_df$utm_easting, coord_df$utm_northing, degree = 2)
+# Extract the polynomial terms from the matrix
+coord_df$latitude_2 <- poly_terms[, 1]
+coord_df$longitude_2 <- poly_terms[, 2]
+coord_df$latitude_longitude <- poly_terms[, 3]
+coord_df$latitude_squared <- poly_terms[, 4]
+coord_df$longitude_squared <- poly_terms[, 5]
+
+
+# CAPSCALE
+set.seed(10000)
+capscale_result <- capscale(bc.hell ~ cond + chla_ug.L + DO_perc + pH + temp_C + DOC + elevation_m, dfun = "distance", data = nmds.merge.hell, distance = "bray")
+capscale_model <- capscale(bc.hell ~ 1, data = nmds.merge.hell, distance = "bray")
+# fitting global model, then performing stepwise selection with ordiRstep
+mod <- ordiR2step(capscale_model, scope = capscale_result)
+Anova(mod) # no matter the order of the explanatory variables in the original formula, the output of this shows that temp. is most important
+summary(mod)
+plot(mod)
+
+# most parsimonious dbRDA model
+set.seed(10000)
+capscale_model <- capscale(bc.hell ~ temp_C, data = nmds.merge.hell, dfun = "distance", distance = "bray")
+capscale_model_an <- Anova(capscale_model)
+plot(capscale_model)
+
+
+mod_scores <- as.data.frame(scores(mod, choices = c(1,2), display = "sites"))
+merge.dbrda <- merge(mod_scores, nmds.merge.hell, by = "row.names")
+
+
+
+cap_scores <- as.data.frame(scores(capscale_model, display = "sites"))
+nmds.merge.hell$CAP1 <- cap_scores$CAP1
+nmds.merge.hell$MDS1 <- cap_scores$MDS1
+CAPxMDS_data <- data.frame(CAP1 = cap_scores$CAP1, MDS1 = cap_scores$MDS1, time = sample_data(PS.hell)$time_point, lake = sample_data(PS.hell)$lake, temp = sample_data(PS.hell)$temp_C)
+CAPxMDS <- ggplot(CAPxMDS_data, aes(x = CAP1, y = MDS1, color = lake)) +
+  geom_point() + stat_ellipse() +
+  #geom_smooth(aes(color=lake, fill=lake), method = "lm", alpha = .2) +
+  xlab("CAP1 (Environment)") + ylab("MDS1 (Bray-Curtis)") +
+  theme_bw()
+CAPxMDS
+
+ordiplot(CAPxMDS_data[,c(1:2)], type="n", main=substitute(paste("")), cex.main=1, display="sites", xlim=c(-0.25, 0.8), cex.lab=0.8, cex.axis=0.8)
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(capscale_model, "sites", cex=0.8, pch=16, col = "gray62")
+ordihull(environm_plot, groups=nmds.merge.hell$lake, draw="polygon", alpha=80, col = unique(lake_colors))
+legend("topright", legend=levels(lake.group), cex=1, pch=16, col=unique(lake_colors), pt.cex=1, bty="n")
+par.new=T
+
+
+
+
+#dbRDA
+set.seed(10000) 
+upr <- dbrda(bc.hell ~ temp_C + elevation_m + cond + chla_ug.L + DOC + DO_perc + pH, data = nmds.merge.hell)
+lwr <- dbrda(bc.hell ~ 1, data = nmds.merge.hell, na.action = 'na.omit')
+# fitting global model, then performing stepwise selection with ordiRstep
+mod_selec <- ordiR2step(lwr, scope = upr)
+anova(mod_selec)
+anova(mod_selec, by = "axis", permu = 200)
+summary(mod_selec)
+RsquareAdj(mod_selec)
+screeplot(mod_selec)
+
+
+dbRDA <- dbrda(formula = bc.hell ~ DOC, data = nmds.merge3, na.action = "na.omit")
+plot(dbRDA)
+```
+
+
+```{r stacked bar plots}
+
+########### plotting relative abundance, help from Megan Demmel, this is what I will use for analysis of relative abundances/ composition
+
+#ASV_rel_abund <- transform_sample_counts(PS.fin, function(x) x/sum(x))
+#pm <- psmelt(ASV_rel_abund)
+pm <- psmelt(PS.500)
+Abund <- aggregate(Abundance ~ sample_type + phy_group + lake + time_point + sequencing_ID + Class, data=pm, FUN=sum)
+sam <- aggregate(Abundance ~ sample_type + phy_group + lake + time_point +sequencing_ID, data=pm, FUN=sum) # this should include everything Abund has except for Class
+
+colnames(sam)[ncol(sam)] <- "tot.abund" # renaming the last column 'tot.abund' so that we can differentiate that from rel.abund
+
+Abund.final <- dplyr::full_join(Abund, sam)
+Abund.final$rel_abund <- Abund.final$Abundance/Abund.final$tot.abund
+View(Abund.final)
+
+Abund.final$Class[Abund.final$rel_abund <= 0.05] <- "Other (<5%)" # classes that have rel.abund less than 5% will be named as other
+
+# plot by sample type
+overall.comp.class <- ggplot(Abund.final, aes(x=phy_group, y=rel_abund, fill=Class, color=Class)) +
+  geom_bar(aes(fill=Class, color=Class), stat="identity", position="fill") +
+  xlab("Sample Type") +ylab("Relative Abundance (%)") + theme_bw() +
+  theme(axis.text.x=element_text(size=11)) + theme(axis.title.x=element_text(size=13)) +
+  theme(axis.text.y=element_text(size=11)) + theme(axis.title.y=element_text(size=13)) +
+  scale_fill_manual(values = c("red4", "orangered", "gold", "lightgreen", "turquoise3", "seagreen4", "lightskyblue", "tan", "navy", "royalblue3", "tan4", "lightsalmon", "gray54")) +
+  scale_color_manual(values = c("red4", "orangered", "gold", "lightgreen", "turquoise3", "seagreen4", "lightskyblue", "tan", "navy", "royalblue3", "tan4", "lightsalmon", "gray54"))
+overall.comp.class
+dev.copy(pdf, "reanalysis/figures/overall.comp.class.pdf", height=6, width=10)
+dev.off()
+
+# rel abund plot across time, lake, and sample type
+Facet <- ggplot(Abund.final, aes(x = time_point, y = rel_abund, fill= Class, color = Class)) +
+  geom_bar(width = 0.8, aes(fill = Class, color = Class), stat ="identity", position = "fill") +
+  facet_grid(cols = vars(lake), rows = vars(phy_group)) + xlab("Sampling Time Point") +  ylab("Relative Abundance (%)") +
+  theme(axis.text.x=element_text(size=11)) + theme(axis.title.x=element_text(size=13)) +
+  theme(axis.text.y=element_text(size=11)) + theme(axis.title.y=element_text(size=13)) +
+  theme(strip.text.x = element_text(size = 13)) + theme(strip.text.y = element_text(size = 13)) +
+  scale_fill_manual(values = c("red4", "orangered", "gold", "lightgreen", "turquoise3", "seagreen4", "lightskyblue", "tan", "navy", "royalblue3", "tan4", "lightsalmon", "gray54")) +
+  scale_color_manual(values = c("red4", "orangered", "gold", "lightgreen", "turquoise3", "seagreen4", "lightskyblue", "tan", "navy", "royalblue3", "tan4", "lightsalmon", "gray54"))
+Facet
+dev.copy(pdf, "reanalysis/figures/Facet.pdf", height=6, width=12)
+dev.off()
+
+# Help from Dr. Jackrel
+
+my_class <- PS.500 %>%
+  tax_glom(taxrank = "Class") %>%                     # agglomerate at phylum level
+  transform_sample_counts(function(x) {x/sum(x)} ) %>% # Transform to rel. abundance
+  psmelt() %>%                                         # Melt to long format
+  filter(Abundance > 0.05) %>%                         # Filter out low abundance taxa
+  arrange(Class)  
+view(my_class)
+
+my_order <- PS.500 %>%
+  tax_glom(taxrank = "Order") %>%                     # agglomerate at phylum level
+  transform_sample_counts(function(x) {x/sum(x)} ) %>% # Transform to rel. abundance
+  psmelt() %>%                                         # Melt to long format
+  filter(Abundance > 0.05) %>%                         # Filter out low abundance taxa
+  arrange(Order)  
+view(my_order)
+
+# plot
+overall.comp.class <- ggplot(my_class, aes(x=phy_group, y=Abundance, fill=Class, color=Class)) +
+  geom_bar(aes(fill=Class, color=Class), stat="identity", position="fill") +
+  ylab("Relative Abundance (%)") + theme(axis.text.x=element_text(size=12)) +
+  theme(axis.text.y=element_text(size=10)) +
+  theme(strip.text.y = element_text(size = 15)) + theme_bw() +
+  scale_fill_manual(values = c("red4", "orangered", "gold", "lightgreen", "turquoise3", "seagreen4", "lightskyblue", "skyblue4", "navy", "royalblue3", "tan3", "salmon2", "gray54")) +
+  scale_color_manual(values = c("red4", "orangered", "gold", "lightgreen", "turquoise3", "seagreen4", "lightskyblue", "skyblue4", "navy", "royalblue3", "tan3", "salmon2", "gray54"))
+overall.comp.class
+dev.copy(pdf, "reanalysis/figures/overall.comp.class.pdf", height=6, width=10)
+dev.off()
+
+
+overall.comp.order <- ggplot(my_order, aes(x=phy_group, y=Abundance, fill=Order, color=Order)) +
+  geom_bar(aes(fill=Order, color=Order), stat="identity", position="fill") +
+  ylab("Relative Abundance (%)") + theme(axis.text.x=element_text(size=12)) +
+  theme(axis.text.y=element_text(size=10)) +
+  theme(strip.text.y = element_text(size = 15)) + theme_bw() +
+  scale_fill_manual(values = c('turquoise','pink2', 'tan', 'orange', 'cornflowerblue', 
+                'magenta', 'darkolivegreen4', 'indianred1', 'tan4', 'darkblue', 
+                'mediumorchid1','firebrick4',  'yellowgreen', 'lightsalmon', 'tan3',
+                "tan1",'darkgray', 'wheat4', '#DDAD4B', 'chartreuse', 
+                'seagreen1', 'moccasin', 'mediumvioletred', 'seagreen','cadetblue1',
+                "darkolivegreen1" ,"tan2" ,   "tomato3" , "#7CE3D8","gainsboro", "gold2", "chocolate", "darkgreen", "dodgerblue", "burlywood3", 'hotpink', 'yellow3', 'blue', 'pink', 'brown3')) +
+  scale_color_manual(values = c('turquoise','pink2', 'tan', 'orange', 'cornflowerblue', 
+                'magenta', 'darkolivegreen4', 'indianred1', 'tan4', 'darkblue', 
+                'mediumorchid1','firebrick4',  'yellowgreen', 'lightsalmon', 'tan3',
+                "tan1",'darkgray', 'wheat4', '#DDAD4B', 'chartreuse', 
+                'seagreen1', 'moccasin', 'mediumvioletred', 'seagreen','cadetblue1',
+                "darkolivegreen1" ,"tan2" ,   "tomato3" , "#7CE3D8","gainsboro", "gold2", "chocolate", "darkgreen", "dodgerblue", "burlywood3", 'hotpink', 'yellow3', 'blue', 'pink', 'brown3'))
+overall.comp.order
+dev.copy(pdf, "reanalysis/figures/overall.comp.order.pdf", height=6, width=10)
+dev.off()
+
+
+Facet.class <- ggplot(my_class, aes(x = time_point, y = Abundance, fill= Class, color = Class)) +
+  geom_bar(width = 0.8, aes(fill = Class, color = Class), stat ="identity", position = "fill") +
+  facet_grid(cols = vars(lake), rows = vars(phy_group)) + xlab("Sampling Time Point") +  ylab("Relative Abundance (%)") +
+  theme_bw() + theme(axis.text.x=element_text(size=12)) +
+  theme(axis.text.y=element_text(size=10)) +
+  theme(strip.text.y = element_text(size = 15)) +
+  scale_fill_manual(values = c("red4", "orangered", "gold", "lightgreen", "turquoise3", "seagreen4", "lightskyblue", "skyblue4", "navy", "tan3", "royalblue3", "black", "antiquewhite2", "chartreuse3", "chocolate", "orchid", "lightpink")) +
+  scale_color_manual(values = c("red4", "orangered", "gold", "lightgreen", "turquoise3", "seagreen4", "lightskyblue", "skyblue4", "navy", "tan3", "royalblue3", "black", "antiquewhite2", "chartreuse3", "chocolate", "orchid", "lightpink"))
+Facet.class
+dev.copy(pdf, "reanalysis/figures/Facet.class.pdf", height=6, width=10)
+dev.off()
+
+```
+
+
+```{r top average taxa compositions for each sample type}
+# missing this data, can't compute
+dominant_taxa <- summaryBy(rel_abund ~ Class*sample_type, data = Abund.final, FUN = mean)
+
+```
+
+
+```{r testing effects of env. variables on rel. abund. and richness of dominant bacteria}
+
+# using Abund.final from the last code chunk
+# testing the effects of time, lake, and sample type on the 5 most dominant classes of bacteria
+
+# GAMMAPROTEOBACTERIA
+gammaproteobacteria <- subset(Abund.final, Class == "Gammaproteobacteria")
+gammaproteobacteria <- summaryBy(rel_abund ~ sequence_ID, data = gammaproteobacteria, FUN = sum)
+gammaproteobacteria <- data.frame(gammaproteobacteria, row.names = gammaproteobacteria[,1])
+gammaproteobacteria <- merge(gammaproteobacteria, sample_data(PS.fin), by = "row.names")
+Anova(lm(rel_abund.sum ~ time_point + phy_group, data = gammaproteobacteria)) # time and phy
+
+# testing environmental effects on gamaproteobacteria abundances
+FitAll.gamma <- lm(rel_abund.sum ~ temp_C + DO_perc + pH + DOC + elevation_m + cond + chla_ug.L, data = gammaproteobacteria)
+step(FitAll.gamma, direction = "both")
+summary(lm(rel_abund.sum ~ DOC + elevation_m + cond + chla_ug.L, data = gammaproteobacteria)) # chlorophyll is significant but relies on other variables
+gamma_chla <- ggplot(gammaproteobacteria, aes(x=chla_ug.L, y=rel_abund.sum)) +
+  geom_point() +
+  geom_smooth() + xlab("Chlorophyll a (ug/L)") + ylab("Gammaproteobacteria Abundance") +
+  theme(axis.text.x=element_text(size=14)) + theme(axis.title.x=element_text(size=16)) +
+  theme(axis.text.y=element_text(size=14)) + theme(axis.title.y=element_text(size=16))
+gamma_chla
+dev.copy(pdf, "phyloseq analysis/figures/gamma_chla.pdf", height=6, width=10)
+dev.off()
+
+gamma_chla <- ggscatter(gammaproteobacteria, x = "chla_ug.L", y = "rel_abund.sum",
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.coeff.args = list( method = "pearson"),cor.coef.coord = c(0.0,0.98),
+          xlab = ("Chlorophyll a (ug/L)"), ylab = ("Gammaproteobacteria Abundance"))
+gamma_chla 
+dev.copy(pdf, "phyloseq analysis/figures/gamma_chla.pdf", height=6, width=10)
+dev.off()
+
+
+# ALPHAPROTEOBACTERIA
+alphaproteobacteria <- subset(Abund.final, Class == "Alphaproteobacteria")
+alphaproteobacteria <- summaryBy(rel_abund ~ sequence_ID, data = alphaproteobacteria, FUN = sum)
+alphaproteobacteria <- data.frame(alphaproteobacteria, row.names = alphaproteobacteria[,1])
+alphaproteobacteria <- merge(alphaproteobacteria, sample_data(PS.fin), by = "row.names")
+Anova(lm(rel_abund.sum ~ lake + time_point + phy_group, data = alphaproteobacteria)) # time
+TukeyHSD(aov(lm(rel_abund.sum ~ lake + time_point + phy_group, data = alphaproteobacteria)))
+FitAll.alpha <- lm(rel_abund.sum ~ temp_C + DO_perc + pH + DOC + elevation_m + cond + chla_ug.L, data = alphaproteobacteria)
+step(FitAll.alpha, direction = "both") # chla
+summary(lm(rel_abund.sum ~ chla_ug.L, data = alphaproteobacteria)) #nope, chl a is not actually significant on its own
+
+
+#ACTINOBACTERIA
+actinobacteria <- subset(Abund.final, Class == "Actinobacteria")
+actinobacteria <- summaryBy(rel_abund ~ sequence_ID, data = actinobacteria, FUN = sum)
+actinobacteria <- data.frame(actinobacteria, row.names = actinobacteria[,1])
+actinobacteria <- merge(actinobacteria, sample_data(PS.fin), by = "row.names")
+Anova(lm(rel_abund.sum ~ lake*time_point*phy_group, data = actinobacteria)) # time
+act.aov <- aov(lm(rel_abund.sum ~ lake + time_point + phy_group, data = actinobacteria))
+TukeyHSD(act.aov)
+FitAll.actino <- lm(rel_abund.sum ~ temp_C + DO_perc + pH + DOC + elevation_m + cond + chla_ug.L, data = actinobacteria)
+step(FitAll.actino, direction = "both") # temp, DOm pH, cond, chl a
+summary(lm(rel_abund.sum ~ temp_C + DO_perc + pH + DOC + cond + 
+    chla_ug.L, data = actinobacteria)) # temp, cond, chl a
+
+actino_DO <- ggplot(actinobacteria, aes(x=temp_C, y=rel_abund.sum)) +
+  geom_point() +
+  geom_smooth() + xlab("Dissolved Oxygen (%)") + ylab("Actinobacteria Abundance") +
+  theme(axis.text.x=element_text(size=14)) + theme(axis.title.x=element_text(size=16)) +
+  theme(axis.text.y=element_text(size=14)) + theme(axis.title.y=element_text(size=16))
+actino_DO 
+dev.copy(pdf, "phyloseq analysis/figures/actino_DO.pdf", height=6, width=10)
+dev.off()
+
+actino_DO <- ggscatter(actinobacteria, x = "temp_C", y = "rel_abund.sum",
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.coeff.args = list( method = "pearson"), cor.coef.coord = c(65,0.45),
+          xlab = ("Dissolved Oxygen (%)"), ylab = ("Actinobacteria Abundance"))
+actino_DO 
+dev.copy(pdf, "phyloseq analysis/figures/actino_DO.pdf", height=6, width=10)
+dev.off()
+
+# CYANOBACTERIA
+cyanobacteriia <- subset(Abund.final, Class == "Cyanobacteriia")
+cyanobacteriia <- summaryBy(rel_abund ~ sequence_ID, data = cyanobacteriia, FUN = sum)
+cyanobacteriia <- data.frame(cyanobacteriia, row.names = cyanobacteriia[,1])
+cyanobacteriia <- merge(cyanobacteriia, sample_data(PS.fin), by = "row.names")
+Anova(lm(rel_abund.sum ~ lake + time_point + phy_group, data = cyanobacteriia)) # time
+FitAll.cyano <- lm(rel_abund.sum ~ temp_C + DO_perc + pH + DOC + elevation_m + cond + chla_ug.L, data = cyanobacteriia)
+stepAIC(FitAll.cyano, direction = "both") # DOC
+
+# plot
+cyano_DOC <- ggplot(cyanobacteriia, aes(x=DOC, y=rel_abund.sum)) +
+  geom_point() +
+  geom_smooth() + xlab("DOC") + ylab("Cyanobacteria Abundance") +
+  theme(axis.text.x=element_text(size=14)) + theme(axis.title.x=element_text(size=16)) +
+  theme(axis.text.y=element_text(size=14)) + theme(axis.title.y=element_text(size=16))
+cyano_DOC
+dev.copy(pdf, "phyloseq analysis/figures/cyano_DOC.pdf", height=6, width=10)
+dev.off()
+
+```
+
+
+```{r}
+ASV.tab<-as.data.frame(otu_table(PS.500.hell))
+ASV.samp<-sample_data(PS.500.hell)
+
+ASV.data.all<-as.data.frame(cbind(ASV.samp,ASV.tab))
+
+remotes::install_github("Russel88/MicEco")
+
+# venns of all samples by time
+All.venn.time<-ps_venn(
+  PS.500.hell,
+  "time_point",
+  fraction = 0,
+  weight = FALSE,
+  relative = TRUE,
+  plot = TRUE,
+  main="All times"
+)
+
+# venns of all phy
+All.venn.phy<-ps_venn(
+  PS.500.hell,
+  "phy_group",
+  fraction = 0,
+  weight = FALSE,
+  relative = TRUE,
+  plot = TRUE,
+  main="All times"
+)
+
+# venn for all water
+All.venn.water.time<-ps_venn(
+  PS.water,
+  "time_point",
+  fraction = 0,
+  weight = FALSE,
+  relative = TRUE,
+  plot = TRUE,
+  #fill= c("lightblue", "orange"),
+  main="Water by time"
+)
+
+
+# venn for all daphnia
+PS.daph = subset_samples(PS.zoops, organism=="Daphnia")
+PS.daph.south = subset_samples(PS.zoops, basin=="South")
+PS.daph.north = subset_samples(PS.zoops, basin=="North")
+
+daph.S<-ps_venn(
+  PS.daph.south,
+  "lake",
+  fraction = 0,
+  weight = FALSE,
+  relative = TRUE,
+  plot = TRUE,
+  main="Daphnia by South-lake"
+)
+
+daph.N<-ps_venn(
+  PS.daph.north,
+  "lake",
+  fraction = 0,
+  weight = FALSE,
+  relative = TRUE,
+  plot = TRUE,
+  main="Daphnia by North-lake"
+)
+
+daph.basin<-ps_venn(
+  PS.daph,
+  "basin",
+  fraction = 0,
+  weight = FALSE,
+  relative = TRUE,
+  plot = TRUE,
+  main="Daphnia by Basin"
+)
+
+g<-plot_grid(All.venn.time, All.venn.water.time, All.venn.phy,
+             daph.N, daph.S, daph.basin, ncol=3)
+g
+dev.copy(pdf, "reanalysis/figures/Venns.pdf", height=8, width=12)
+dev.off()
+
+
+library("ggVennDiagram")
+Venn.all<-ggVennDiagram(ASV.data.all, label_alpha=0) + 
+  scale_fill_distiller(palette = "YlOrRd", direction = 1)+
+  ggtitle("all data")
+
+```
+

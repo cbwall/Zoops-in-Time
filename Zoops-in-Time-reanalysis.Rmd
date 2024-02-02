@@ -549,8 +549,7 @@ plot(bd, ellipse = TRUE, hull = FALSE, label.cex = 0.4, main="Distance to Centro
 dev.copy(pdf, "figures/bc_beta.df.pdf", height=6, width=6)
 dev.off()
 
-dist_to_centroids(bc_500.hell.bd, bc_beta.df$organism)
-
+sqrt(dist(bd$centroids[,bd$eig>0])^2 - dist(bd$centroids[,bd$eig<0]^2))
 
 # one approach
 bds<-betadisper(bc_water.hell.bd, bc_water.df$organism, type="centroid")

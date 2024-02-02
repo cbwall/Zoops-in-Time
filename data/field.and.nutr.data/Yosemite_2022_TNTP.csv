@@ -1,0 +1,247 @@
+Analysis,Project.Name,Time,Lake.or.tank,Bottle.ID,Sample.info,TDP..ug.L,TDN..ug.L
+TN,Long term,Yos-2022,Cooney ,UC1,analyzed,-,269.97
+TN,Long term,Yos-2022,Eastern Brook ,UC2,analyzed,-,217.44
+TN,Long term,Yos-2022,Secret,UC3,analyzed,-,114.04
+TN,Long term,Yos-2022,Serene ,UC4,analyzed,-,211.83
+TN,Long term,Yos-2022,Virginia,UC5,analyzed,-,165.18
+TN,Long term,Yos-2022,Gardisky ,UC6,analyzed,-,215.61
+TN,Long term,Yos-2022,May Pond,UC7,analyzed,-,947.92
+TN,Long term,Yos-2022,Sunrise 3,UC8,analyzed,-,1032.54
+TN,Long term,Yos-2022,Spillway ,UC9,analyzed,-,108.16
+TN,Long term,Yos-2022,Helen ,UC10,analyzed,-,123.01
+TN,Long term,Yos-2022,Elizabeth,UC11,analyzed,-,249.94
+TN,Long term,Yos-2022,Cascade,UC12,analyzed,-,240.83
+TN,Long term,Yos-2022,Sunrise 3_rep,UC13,analyzed,-,741.97
+TN,Long term,Yos-2022,Eastern Brook AA,UC14,analyzed,-,224.72
+TN,Long term,Yos-2022,Granite 1 (lower),UC15,analyzed,-,185.07
+TN,Long term,Yos-2022,Polly Dome 1,UC16,analyzed,-,209.87
+TN,Long term,Yos-2022,Wasco,UC17,analyzed,-,125.53
+TN,Long term,Yos-2022,Blue AA,UC18,analyzed,-,927.18
+TN,Long term,Yos-2022,Sunrise 2,UC19,analyzed,-,199.50
+TN,Long term,Yos-2022,Cathedral Upper,UC20,lost,-,NA
+TN,Long term,Yos-2022,Granite 2 (upper),UC21,analyzed,-,277.54
+TN,Long term,Yos-2022,Polly Dome 2,UC22,analyzed,-,212.95
+TN,Long term,Yos-2022,Polly Dome 3,UC23,analyzed,-,584.92
+TN,Long term,Yos-2022,Cathedral Lower,UC24,analyzed,-,92.05
+TN,Long term,Yos-2022,Steelhead ,UC25,analyzed,-,74.39
+TN,Long term,Yos-2022,Lukens,UC26,analyzed,-,157.75
+TN,Long term,Yos-2022,Sunrise 2_rep,UC27,analyzed,-,337.36
+TN,Long term,Yos-2022,Blue ,UC28,analyzed,-,137.16
+TN,Long term,Yos-2022,Greenstone,UC29,analyzed,-,110.82
+TN,Long term,Yos-2022,Gaylor Lower,UC30,analyzed,-,494.69
+TN,Long term,Yos-2022,Sunrise 1,UC34,analyzed,-,303.18
+TN,Long term,Yos-2022,Gaylor Upper,UC65,analyzed,-,1896.26
+TN,Long term,Yos-2022,May ,UC66,analyzed,-,750.10
+TN,Trophobiomes,T0.5,1,UC67,analyzed,-,411.61
+TN,Trophobiomes,T0.5,2,UC68,analyzed,-,407.27
+TN,Trophobiomes,T0.5,3,UC69,analyzed,-,261.01
+TN,Trophobiomes,T0.5,4,UC70,analyzed,-,783.16
+TN,Trophobiomes,T0.5,5,UC71,analyzed,-,173.58
+TN,Trophobiomes,T0.5,6,UC72,analyzed,-,774.19
+TN,Trophobiomes,T0.5,7,UC73,analyzed,-,858.25
+TN,Trophobiomes,T0.5,8,UC74,analyzed,-,582.40
+TN,Trophobiomes,T0.5,9,UC75,analyzed,-,225.42
+TN,Trophobiomes,T0.5,10,UC76,analyzed,-,741.97
+TN,Trophobiomes,T0.5,11,UC77,analyzed,-,279.08
+TN,Trophobiomes,T0.5,12,UC78,analyzed,-,185.63
+TN,Trophobiomes,T0.5,13,UC79,analyzed,-,1014.19
+TN,Trophobiomes,T0.5,14,UC80,analyzed,-,677.53
+TN,Trophobiomes,T0.5,15,UC81,analyzed,-,313.54
+TN,Trophobiomes,T0.5,16,UC82,analyzed,-,483.49
+TN,Trophobiomes,T0.5,17,UC83,analyzed,-,159.43
+TN,Trophobiomes,T0.5,18,UC84,analyzed,-,212.25
+TN,Trophobiomes,T1,1,UC121,analyzed,-,275.80
+TN,Trophobiomes,T1,2,UC122,analyzed,-,440.24
+TN,Trophobiomes,T1,3,UC123,analyzed,-,404.48
+TN,Trophobiomes,T1,4,UC124,analyzed,-,414.22
+TN,Trophobiomes,T1,5,UC125,analyzed,-,423.97
+TN,Trophobiomes,T1,6,UC126,analyzed,-,171.23
+TN,Trophobiomes,T1,7,UC127,analyzed,-,385.05
+TN,Trophobiomes,T1,8,UC128,analyzed,-,499.09
+TN,Trophobiomes,T1,9,UC129,analyzed,-,487.55
+TN,Trophobiomes,T1,10,UC130,analyzed,-,320.60
+TN,Trophobiomes,T1,11,UC131,analyzed,-,310.98
+TN,Trophobiomes,T1,12,UC132,analyzed,-,146.09
+TN,Trophobiomes,T1,13,UC133,analyzed,-,256.68
+TN,Trophobiomes,T1,14,UC134,analyzed,-,105.43
+TN,Trophobiomes,T1,15,UC135,analyzed,-,298.17
+TN,Trophobiomes,T1,16,UC136,analyzed,-,466.34
+TN,Trophobiomes,T1,17,UC137,analyzed,-,168.08
+TN,Trophobiomes,T1,18,UC138,analyzed,-,359.75
+TN,Trophobiomes,T2,1,UC139,analyzed,-,772.91
+TN,Trophobiomes,T2,2,UC140,analyzed,-,844.29
+TN,Trophobiomes,T2,3,UC141,analyzed,-,502.26
+TN,Trophobiomes,T2,4,UC142,analyzed,-,991.55
+TN,Trophobiomes,T2,5,UC143,analyzed,-,701.78
+TN,Trophobiomes,T2,6,UC144,analyzed,-,174.49
+TN,Trophobiomes,T2,7,UC145,analyzed,-,1105.56
+TN,Trophobiomes,T2,8,UC146,analyzed,-,963.05
+TN,Trophobiomes,T2,9,UC147,analyzed,-,402.50
+TN,Trophobiomes,T2,10,UC148,analyzed,-,901.30
+TN,Trophobiomes,T2,11,UC149,analyzed,-,837.16
+TN,Trophobiomes,T2,12,UC150,analyzed,-,236.24
+TN,Trophobiomes,T2,13,UC151,analyzed,-,986.80
+TN,Trophobiomes,T2,14,UC152,analyzed,-,507.01
+TN,Trophobiomes,T2,15,UC153,analyzed,-,1024.81
+TN,Trophobiomes,T2,16,UC154,analyzed,-,606.77
+TN,Trophobiomes,T2,17,UC155,analyzed,-,259.99
+TN,Trophobiomes,T2,18,UC156,analyzed,-,459.51
+TN,Trophobiomes,T3,1,UC175,analyzed,-,331.25
+TN,Trophobiomes,T3,2,UC176,analyzed,-,393.00
+TN,Trophobiomes,T3,3,UC177,analyzed,-,585.39
+TN,Trophobiomes,T3,4,UC178,analyzed,-,834.79
+TN,Trophobiomes,T3,5,UC179,analyzed,-,554.52
+TN,Trophobiomes,T3,6,UC180,analyzed,-,245.74
+TN,Trophobiomes,T3,7,UC181,analyzed,-,896.54
+TN,Trophobiomes,T3,8,UC182,analyzed,-,587.77
+TN,Trophobiomes,T3,9,UC183,analyzed,-,435.76
+TN,Trophobiomes,T3,10,UC184,analyzed,-,369.25
+TN,Trophobiomes,T3,11,UC185,analyzed,-,440.51
+TN,Trophobiomes,T3,12,UC186,analyzed,-,212.49
+TN,Trophobiomes,T3,13,UC187,analyzed,-,597.03
+TN,Trophobiomes,T3,14,UC188,analyzed,-,245.74
+TN,Trophobiomes,T3,15,UC189,analyzed,-,492.76
+TN,Trophobiomes,T3,16,UC190,analyzed,-,345.50
+TN,Trophobiomes,T3,17,UC191,analyzed,-,231.49
+TN,Trophobiomes,T3,18,UC192,analyzed,-,559.27
+TN,MP,T2_MP,Convict,UC211,analyzed,-,ND
+TN,MP,T2_MP,Cooney,UC212,analyzed,-,74.73
+TN,MP,T2_MP,Blue,UC213,analyzed,-,264.74
+TN,MP,T2_MP,Virginia,UC214,analyzed,-,872.79
+TN,MP,T2_MP,East Brook,UC215,analyzed,-,409.63
+TN,MP,T2_MP,Serene,UC216,analyzed,-,697.03
+TN,MP,T3_MP,Convict,UC217,analyzed,-,103.23
+TN,MP,T3_MP,Cooney,UC218,analyzed,-,84.23
+TN,MP,T3_MP,Blue,UC219,analyzed,-,79.48
+TN,MP,T3_MP,Virginia,UC220,analyzed,-,217.24
+TN,MP,T3_MP,East Brook,UC221,analyzed,-,202.99
+TN,MP,T3_MP,Serene,UC222,analyzed,-,302.75
+TN,MP,T4_MP,Convict,UC223,analyzed,-,ND
+TN,MP,T4_MP,Cooney,UC224,analyzed,-,5982.29
+TN,MP,T4_MP,Blue,UC225,analyzed,-,100.86
+TN,MP,T4_MP,Virginia,UC226,analyzed,-,3228.98
+TN,MP,T4_MP,East Brook,UC227,analyzed,-,259.99
+TN,MP,T4_MP,Serene,UC228,analyzed,-,188.74
+TP,Long term,Yos-2022,Granite 1 (lower),UC31,analyzed,20.43,-
+TP,Long term,Yos-2022,Sunrise 2,UC32,analyzed,27.86,-
+TP,Long term,Yos-2022,Polly Dome 2,UC33,analyzed,89.16,-
+TP,Long term,Yos-2022,Sunrise 2_rep,UC35,analyzed,40.56,-
+TP,Long term,Yos-2022,Lukens,UC36,analyzed,16.25,-
+TP,Long term,Yos-2022,Steelhead ,UC37,analyzed,17.65,-
+TP,Long term,Yos-2022,Cathedral Lower,UC38,analyzed,111.15,-
+TP,Long term,Yos-2022,Wasco,UC39,analyzed,26.63,-
+TP,Long term,Yos-2022,Sunrise 3_rep,UC40,analyzed,37.77,-
+TP,Long term,Yos-2022,Greenstone,UC41,analyzed,33.44,-
+TP,Long term,Yos-2022,Eastern Brook AA,UC42,analyzed,12.69,-
+TP,Long term,Yos-2022,Polly Dome 3,UC43,analyzed,89.16,-
+TP,Long term,Yos-2022,Granite 2 (upper),UC44,analyzed,9.91,-
+TP,Long term,Yos-2022,May Pond,UC45,analyzed,199.69,-
+TP,Long term,Yos-2022,Gaylor Lower,UC46,analyzed,37.46,-
+TP,Long term,Yos-2022,Sunrise 3,UC47,analyzed,12.69,-
+TP,Long term,Yos-2022,Cathedral Upper,UC48,analyzed,28.79,-
+TP,Long term,Yos-2022,Cascade,UC49,analyzed,136.84,-
+TP,Long term,Yos-2022,Polly Dome 1,UC50,analyzed,15.17,-
+TP,Long term,Yos-2022,Sunrise 1,UC51,analyzed,38.70,-
+TP,Long term,Yos-2022,Blue AA,UC52,analyzed,36.84,-
+TP,Long term,Yos-2022,Elizabeth,UC53,analyzed,65.63,-
+TP,Long term,Yos-2022,Secret,UC54,analyzed,60.99,-
+TP,Long term,Yos-2022,Virginia,UC55,analyzed,4.95,-
+TP,Long term,Yos-2022,Eastern Brook ,UC56,analyzed,32.97,-
+TP,Long term,Yos-2022,Gaylor Upper,UC57,analyzed,10.22,-
+TP,Long term,Yos-2022,Helen ,UC58,analyzed,6.81,-
+TP,Long term,Yos-2022,Cooney ,UC59,analyzed,57.28,-
+TP,Long term,Yos-2022,Gardisky ,UC60,analyzed,45.51,-
+TP,Long term,Yos-2022,Spillway ,UC61,analyzed,61.92,-
+TP,Long term,Yos-2022,Serene ,UC62,analyzed,10.84,-
+TP,Long term,Yos-2022,May ,UC63,analyzed,29.41,-
+TP,Long term,Yos-2022,Blue ,UC64,analyzed,22.60,-
+TP,Trophobiomes,T0.5,1,UC85,analyzed,89.78,-
+TP,Trophobiomes,T0.5,2,UC86,analyzed,8.36,-
+TP,Trophobiomes,T0.5,3,UC87,analyzed,327.86,-
+TP,Trophobiomes,T0.5,4,UC88,analyzed,86.07,-
+TP,Trophobiomes,T0.5,5,UC89,analyzed,260.37,-
+TP,Trophobiomes,T0.5,6,UC90,analyzed,26.93,-
+TP,Trophobiomes,T0.5,7,UC91,analyzed,132.82,-
+TP,Trophobiomes,T0.5,8,UC92,analyzed,23.22,-
+TP,Trophobiomes,T0.5,9,UC93,analyzed,271.83,-
+TP,Trophobiomes,T0.5,10,UC94,analyzed,36.22,-
+TP,Trophobiomes,T0.5,11,UC95,analyzed,391.33,-
+TP,Trophobiomes,T0.5,12,UC96,analyzed,14.55,-
+TP,Trophobiomes,T0.5,13,UC97,analyzed,15.48,-
+TP,Trophobiomes,T0.5,14,UC98,analyzed,17.96,-
+TP,Trophobiomes,T0.5,15,UC99,analyzed,81.11,-
+TP,Trophobiomes,T0.5,16,UC100,analyzed,83.90,-
+TP,Trophobiomes,T0.5,17,UC101,analyzed,30.34,-
+TP,Trophobiomes,T0.5,18,UC102,analyzed,165.63,-
+TP,Trophobiomes,T1,2,UC103,analyzed,21.67,-
+TP,Trophobiomes,T1,1,UC104,analyzed,39.32,-
+TP,Trophobiomes,T1,3,UC105,analyzed,246.13,-
+TP,Trophobiomes,T1,4,UC106,analyzed,45.51,-
+TP,Trophobiomes,T1,5,UC107,analyzed,119.35,-
+TP,Trophobiomes,T1,6,UC108,analyzed,7.12,-
+TP,Trophobiomes,T1,7,UC109,analyzed,10.22,-
+TP,Trophobiomes,T1,8,UC110,analyzed,8.67,-
+TP,Trophobiomes,T1,9,UC111,analyzed,230.65,-
+TP,Trophobiomes,T1,10,UC112,analyzed,31.27,-
+TP,Trophobiomes,T1,11,UC113,analyzed,258.51,-
+TP,Trophobiomes,T1,12,UC114,analyzed,8.36,-
+TP,Trophobiomes,T1,13,UC115,analyzed,26.32,-
+TP,Trophobiomes,T1,14,UC116,analyzed,17.65,-
+TP,Trophobiomes,T1,15,UC117,analyzed,86.38,-
+TP,Trophobiomes,T1,16,UC118,analyzed,20.74,-
+TP,Trophobiomes,T1,17,UC119,analyzed,40.25,-
+TP,Trophobiomes,T1,18,UC120,analyzed,250.15,-
+TP,Trophobiomes,T2,1,UC157,analyzed,43.96,-
+TP,Trophobiomes,T2,2,UC158,analyzed,11.46,-
+TP,Trophobiomes,T2,3,UC159,analyzed,61.61,-
+TP,Trophobiomes,T2,4,UC160,analyzed,4.95,-
+TP,Trophobiomes,T2,5,UC161,analyzed,44.58,-
+TP,Trophobiomes,T2,6,UC162,analyzed,4.02,-
+TP,Trophobiomes,T2,7,UC163,analyzed,26.32,-
+TP,Trophobiomes,T2,8,UC164,analyzed,23.22,-
+TP,Trophobiomes,T2,9,UC165,analyzed,186.38,-
+TP,Trophobiomes,T2,10,UC166,analyzed,24.46,-
+TP,Trophobiomes,T2,11,UC167,analyzed,171.52,-
+TP,Trophobiomes,T2,12,UC168,analyzed,8.98,-
+TP,Trophobiomes,T2,13,UC169,analyzed,15.17,-
+TP,Trophobiomes,T2,14,UC170,analyzed,29.41,-
+TP,Trophobiomes,T2,15,UC171,analyzed,47.37,-
+TP,Trophobiomes,T2,16,UC172,analyzed,6.97,-
+TP,Trophobiomes,T2,17,UC173,analyzed,42.11,-
+TP,Trophobiomes,T2,18,UC174,analyzed,5.26,-
+TP,Trophobiomes,T3,1,UC193,analyzed,61.61,-
+TP,Trophobiomes,T3,2,UC194,analyzed,11.46,-
+TP,Trophobiomes,T3,3,UC195,analyzed,86.69,-
+TP,Trophobiomes,T3,4,UC196,analyzed,10.22,-
+TP,Trophobiomes,T3,5,UC197,analyzed,69.04,-
+TP,Trophobiomes,T3,6,UC198,analyzed,6.19,-
+TP,Trophobiomes,T3,7,UC199,analyzed,74.92,-
+TP,Trophobiomes,T3,8,UC200,analyzed,40.56,-
+TP,Trophobiomes,T3,9,UC201,analyzed,43.34,-
+TP,Trophobiomes,T3,10,UC202,analyzed,8.67,-
+TP,Trophobiomes,T3,11,UC203,analyzed,131.27,-
+TP,Trophobiomes,T3,12,UC204,analyzed,21.98,-
+TP,Trophobiomes,T3,13,UC205,analyzed,12.38,-
+TP,Trophobiomes,T3,14,UC206,analyzed,65.02,-
+TP,Trophobiomes,T3,15,UC207,analyzed,61.61,-
+TP,Trophobiomes,T3,16,UC208,analyzed,4.33,-
+TP,Trophobiomes,T3,17,UC209,analyzed,5.88,-
+TP,Trophobiomes,T3,18,UC210,analyzed,49.85,-
+TP,MP,T2_MP,Convict,UC229,analyzed,4.33,-
+TP,MP,T2_MP,Cooney,UC230,analyzed,9.29,-
+TP,MP,T2_MP,Blue,UC231,analyzed,149.54,-
+TP,MP,T2_MP,Virginia,UC232,analyzed,ND,-
+TP,MP,T2_MP,East Brook,UC233,analyzed,13.62,-
+TP,MP,T2_MP,Serene,UC234,analyzed,4102.48,-
+TP,MP,T3_MP,Convict,UC235,analyzed,204.95,-
+TP,MP,T3_MP,Cooney,UC236,analyzed,369.04,-
+TP,MP,T3_MP,Blue,UC237,analyzed,6.19,-
+TP,MP,T3_MP,Virginia,UC238,analyzed,7.74,-
+TP,MP,T3_MP,East Brook,UC239,analyzed,101.86,-
+TP,MP,T3_MP,Serene,UC240,analyzed,48.61,-
+TP,MP,T4_MP,Convict,UC241,analyzed,4.02,-
+TP,MP,T4_MP,Cooney,UC242,analyzed,7.43,-
+TP,MP,T4_MP,Blue,UC243,analyzed,3.41,-
+TP,MP,T4_MP,Virginia,UC244,analyzed,4.02,-
+TP,MP,T4_MP,East Brook,UC245,analyzed,6.81,-
+TP,MP,T4_MP,Serene,UC246,analyzed,6.19,-

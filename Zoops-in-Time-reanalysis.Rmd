@@ -758,74 +758,82 @@ set.seed(10000)
 bc_500 <- phyloseq::distance(PS.500, method = "bray") # rarefied data
 ```
 
-Run PERMANOVA and NMDS so we can fit envionmental vectors
+Run PERMANOVA on the dissimilarity. The code here is meant to give PERMANOVA tests of main effects, tests of environmental effects in Permanova, and tests of betadispersion for different groups.
+- first, we will run analysis for all samples
+- then for zooplankton alone
+- then for water alone
 ```{r metaMDS, scores, and PERMANOVAS from BC distance matrices}
 ####################################
 # first let's look at PERMANOVA for the full dataset
 # rarefied, hellinger
 set.seed(1000)
 bc_500.hell <- phyloseq::distance(PS.500.hell, method = "bray") # rarefied and hellinger transformed
-
-# run NMDS on Bray distance object (defined above for 'bc_500.hell'), this is
-set.seed(520)
-nmds.rarhell <- metaMDS(bc_500.hell,
-          distance = "bray",
-          k = 3,
-          maxit = 999, 
-          wascores = TRUE)
-
-# get NMDS 1-3
-sp.scores.hell <- as.data.frame(scores(nmds.rarhell, display = "sites"))
-nmds.rarhell.df <- merge(sample_data(PS.500.hell), sp.scores.hell, by = 'row.names', all = TRUE)
-
-#### pick envr. data and run the envfit function
-env.hell<- nmds.rarhell.df %>%
-  dplyr::select(latitude, longitude, elevation_m, temp_C, chla_ug.L, pH, DO_perc, spc, cond, DOC, TDN, TDP)
-
-set.seed(123)
-vf <- envfit(nmds.rarhell, env.hell, perm = 999, na.rm = TRUE) 
-# lots of significance, except elevation, pH, DOC, TDN,    highest significance lat/long, spc, cond
-
-### grab vectors and put into df
-# The segments are scaled to the r2 value. You can extract this information with scores. Then these lengths are further scaled to fit the plot. This is done with a multiplier that is analysis specific, and can be accessed using the command ordiArrowMul(en).
-spp.scrs <- as.data.frame(scores(vf, display = "vectors"))*ordiArrowMul(vf) 
-spp.scrs.test <- cbind(spp.scrs, r=vf$vectors[2], pvals=vf$vectors[4], Envfact = rownames(spp.scrs))
-names(spp.scrs.test)[names(spp.scrs.test) == 'r'] <- 'r2' # rename bc vector has naming issues
-
-# subset to keep only those Envfactors that are significant 
-spp.scrs.signif<-spp.scrs.test[spp.scrs.test$pvals< 0.05, ]
-
-# make the plot
-NMDS.env <- ggplot(nmds.rarhell.df) +
-  geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = organism)) +
-  coord_fixed() + ## need aspect ratio of 1!
-  geom_segment(data = spp.scrs.signif,
-               aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2),
-               arrow = arrow(length = unit(0.25, "cm")), colour = "grey") +
-  geom_text(data = spp.scrs.signif, aes(x = NMDS1, y = NMDS2, label = Envfact),
-            size = 3)+
-  theme_classic()
-
-NMDS.env
-dev.copy(pdf, "figures/Figx.NMDS.env.pdf", height=7, width=7)
-dev.off()
+all.sam.df <- pssd2veg(PS.500.hell) # pull out the sample data for PERMANOVA
 
 ###############
 # run PERMANOVA with Time, Lake, Organisms
-# use the bray-curtis dist from phyloswq: bc_500.hell
+# use the bray-curtis dist from phyloseq: bc_500.hell
 set.seed(781)
-broad.model.full <- adonis2(bc_500.hell ~ time_point*lake*organism, 
-                            data = nmds.rarhell.df, method="bray", permutations = 999)
-broad.model.full
+broad.model.zoop <- adonis2(bc_500.hell ~ time_point*lake*organism, 
+                            data = all.sam.df, method="bray", permutations = 999)
+broad.model.zoop
 
 #test for beta dispersion
-anova(betadisper(bc_500.hell, nmds.rarhell.df$lake)) #  significant (barely)
-anova(betadisper(bc_500.hell, nmds.rarhell.df$time_point)) #  significant
-anova(betadisper(bc_500.hell, nmds.rarhell.df$organism)) # very significant
+anova(betadisper(bc_500.hell, all.sam.df$lake)) #  significant (barely)
+anova(betadisper(bc_500.hell, all.sam.df$time_point)) #  significant
+anova(betadisper(bc_500.hell, all.sam.df$organism)) # very significant
 
+######################################################
+##################
+# zoops only
+# just zoops, from rarefied data, hellinger transformed
+PS.zoops = subset_samples(PS.500.hell, sample_type=="Zooplankton")
+
+# both of the below are using rarefied and hellinger transformed data: PS.zoops and PS.water
+set.seed(1000)
+bc_zoops <- phyloseq::distance(PS.zoops, method = "bray")
+zoop.df <- pssd2veg(PS.zoops) # pull out the sample data for PERMANOVA
+
+# run PERMANOVA
+set.seed(781)
+broad.model.zoop <- adonis2(bc_zoops ~ time_point*lake*organism, data = zoop.df, permutations = 999)
+broad.model.zoop
+
+# Env model
+env.model.zoop <- adonis2(bc_zoops ~ latitude + elevation_m + temp_C + pH + cond + 
+                            DOC + chla_ug.L + DO_perc, data = zoop.df, permutations = 999)
+env.model.zoop # latitude is best (0.08),  elevation (0.04), DO (0.02), cond (0.02)
+
+# betadispersion
+anova(betadisper(bc_zoops, zoop.df$time_point)) # significant (second)
+anova(betadisper(bc_zoops, zoop.df$lake)) # significant (barely)
+anova(betadisper(bc_zoops, zoop.df$organism)) # significant (most)
+
+##############################################
+#######################
+# water only
+# just water, from rarefied data, hellinger transformed
+PS.water = subset_samples(PS.500.hell, sample_type=="Water")
+
+set.seed(1000)
+bc_water <- phyloseq::distance(PS.water, method = "bray")
+water.df <- pssd2veg(PS.water) # pull out the sample data for PERMANOVA
+
+# run PERMANOVA
+set.seed(781)
+broad.model.water <- adonis2(bc_water ~ time_point + lake, data = water.df, permutations = 999)
+broad.model.water
+
+env.model.water <- adonis2(bc_water ~ latitude + elevation_m + temp_C + pH + 
+                             cond + DOC + chla_ug.L + DO_perc, data = water.df, permutations = 999)
+env.model.water #latitude (0.21), elevation (0.17), cond (0.07), temp (0.05)
+
+#betadispersion
+anova(betadisper(bc_water, water.df$time_point)) #not significant
+anova(betadisper(bc_water, water.df$lake)) #not significant
 ```
 
-Run NMDS with envfit for daphnia, calanoids, cyclopoids to better understand how environment is impacting these host-microbiomes.
+Run NMDS with envfit for daphnia, calanoids, cyclopoids to better understand how environment is impacting these host-microbiomes. We will run NMDS and fit env.fit, perform PERMANOVA, test betadispersion, and test env conditions on BC matrix. 
 - First *Daphnia*
 - Holopedium too few to be informative here
 ```{r daph env NMDS}
@@ -881,9 +889,25 @@ NMDS.daph <- ggplot(nmds.daph.rarhell.df) +
   geom_text(data = spp.daph.scrs.signif, aes(x = NMDS1, y = NMDS2, label = Envfact),
             size = 3)+
   theme_classic()
+
+
+### permanova and betadisp
+# run PERMANOVA
+set.seed(781)
+broad.model.daph <- adonis2(bc_daph.hell ~ lake, 
+                            data = nmds.daph.rarhell.df, permutations = 999)
+broad.model.daph # signif lake effect 
+
+# Env model
+env.model.daph <- adonis2(bc_daph.hell ~ latitude + elevation_m + temp_C + pH + cond + 
+                            DOC + chla_ug.L + DO_perc, data = nmds.daph.rarhell.df, permutations = 999)
+env.model.daph # latitude is best (0.16), elevation (0.09), cond (0.06), other factors ~ 0.03, DOC (0.01)
+
+# betadispersion
+anova(betadisper(bc_daph.hell, nmds.daph.rarhell.df$lake)) # not significant
 ```
 
-- Now run NMDS-envfit for calanoids
+- Now run NMDS-envfit for *calanoids*
 ```{r calanoid env nmds}
 # subset
 calan.phylo<-subset_samples(PS.500.hell, organism=="Calanoid")
@@ -935,9 +959,24 @@ NMDS.calan <- ggplot(nmds.calan.rarhell.df) +
   geom_text(data = spp.calan.scrs.signif, aes(x = NMDS1, y = NMDS2, label = Envfact),
             size = 3)+
   theme_classic()
+
+### permanova and betadisp
+# run PERMANOVA
+set.seed(781)
+broad.model.calan <- adonis2(bc_calan.hell ~ lake, 
+                            data = nmds.calan.rarhell.df, permutations = 999)
+broad.model.calan # signif lake effect 
+
+# Env model
+env.model.calan <- adonis2(bc_calan.hell ~ latitude + elevation_m + temp_C + pH + cond + 
+                            DOC + chla_ug.L + DO_perc, data = nmds.calan.rarhell.df, permutations = 999)
+env.model.calan # elevation (0.18), latitude is best (0.13), cond/DO/temp (0.03)
+
+# betadispersion
+anova(betadisper(bc_calan.hell, nmds.calan.rarhell.df$lake)) # not significant
 ```
 
-- Finally, run NMDS-envfit for cyclopoids
+- Now run NMDS-envfit for *cyclopoids*
 ```{r cyclopoid env nmds}
 # subset
 cyclop.phylo<-subset_samples(PS.500.hell, organism=="Cyclopoid")
@@ -990,84 +1029,95 @@ NMDS.cyclop <- ggplot(nmds.cyclop.rarhell.df) +
             size = 3)+
   theme_classic()
 
+
+### permanova and betadisp
+# run PERMANOVA
+set.seed(781)
+broad.model.cyclop <- adonis2(bc_cyclop.hell ~ lake, 
+                            data = nmds.cyclop.rarhell.df, permutations = 999)
+broad.model.cyclop # signif lake effect 
+
+# Env model
+env.model.cyclop <- adonis2(bc_cyclop.hell ~ latitude + elevation_m + temp_C + pH + cond + 
+                            DOC + chla_ug.L + DO_perc, data = nmds.cyclop.rarhell.df, permutations = 999)
+env.model.cyclop # latitude is best (0.17), elevation (0.11), cond (0.06), pH (0.05)
+
+# betadispersion
+anova(betadisper(bc_cyclop.hell, nmds.cyclop.rarhell.df$lake)) # not significant
+
 ```
 
-- make an aggregate plot
+- Now run NMDS-envfit for *Water*
+```{r water env nmds}
+# subset
+water.phylo<-subset_samples(PS.500.hell, sample_type=="Water")
+
+####################################
+# first let's look at PERMANOVA for the full dataset
+# rarefied, hellinger
+set.seed(1000)
+bc_water.hell <- phyloseq::distance(water.phylo, method = "bray") # rarefied and hellinger transformed
+
+# run NMDS on Bray distance object (defined above for 'bc_500.hell'), this is
+set.seed(520)
+nmds.water.rarhell <- metaMDS(bc_water.hell,
+          distance = "bray",
+          k = 3,
+          maxit = 999, 
+          wascores = TRUE)
+
+
+# get NMDS 1-3
+sp.water.scores.hell <- as.data.frame(scores(nmds.water.rarhell, display = "sites"))
+nmds.water.rarhell.df <- merge(sample_data(water.phylo), sp.water.scores.hell, by = 'row.names', all = TRUE)
+
+#### pick envr. data and run the envfit function
+env.water.hell<- nmds.water.rarhell.df %>%
+  dplyr::select(latitude, longitude, elevation_m, temp_C, chla_ug.L, pH, DO_perc, cond, DOC, TDN, TDP)
+
+set.seed(123)
+vf.water <- envfit(nmds.water.rarhell, env.water.hell, perm = 999, na.rm = TRUE) 
+# lots of significance, except elevation, pH, DOC, TDN,    highest significance lat/long, spc, cond
+
+### grab vectors and put into df
+spp.water.scrs <- as.data.frame(scores(vf.water, display = "vectors"))*ordiArrowMul(vf.water)
+spp.water.scrs.test <- cbind(spp.water.scrs, r=vf.water$vectors[2], pvals=vf.water$vectors[4], 
+                       Envfact = rownames(spp.water.scrs))
+names(spp.water.scrs.test)[names(spp.water.scrs.test) == 'r'] <- 'r2' # rename bc vector has naming issues
+
+# subset to keep only those Envfactors that are significant 
+spp.water.scrs.signif<-spp.water.scrs.test[spp.water.scrs.test$pvals< 0.05, ]
+
+# make the plot
+NMDS.water <- ggplot(nmds.water.rarhell.df) +
+  geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = lake)) +
+  coord_fixed(ratio=1.2) + 
+  stat_ellipse(level=0.9, linetype = 2, aes(x = NMDS1, y = NMDS2, color=lake)) +
+  ggtitle("Water")+
+  geom_segment(data = spp.water.scrs.signif,
+               aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2),
+               arrow = arrow(length = unit(0.25, "cm")), colour = "grey") +
+  geom_text(data = spp.water.scrs.signif, aes(x = NMDS1, y = NMDS2, label = Envfact),
+            size = 3)+
+  theme_classic()
+```
+
+- make an aggregate plot of the 4 NMDS-envs
 ```{r envfit NMDS fig}
 extract.legend <- get_legend(
   # create some space to the left of the legend
   NMDS.daph + theme(legend.box.margin = margin(0, 0, 0, 10)))
 
-NMDS.env.species<-plot_grid(NMDS.daph + guides(color="none"), 
+NMDS.env.species<-plot_grid(NMDS.water + guides(color="none"),
+                            NMDS.daph + guides(color="none"), 
                             NMDS.calan + guides(color="none"),
                             NMDS.cyclop + guides(color="none"),
                             extract.legend,
-          ncol=4, rel_widths = c(10,9.2,10,1), labels = c("A","B", "C", ""))
+          ncol=5, rel_widths = c(10,9.2,10,10,1), labels = c("A","B", "C", "D", ""))
 
 NMDS.env.species
-dev.copy(pdf, "figures/Figx.NMDS.env.species.pdf", height=5, width=15)
+dev.copy(pdf, "figures/Figx.NMDS.env.specieswater.pdf", height=5, width=18)
 dev.off()
-```
-
-```{r metaMDS, scores, and PERMANOVAS from BC distance matrices}
-##################
-# zoops only
-# just zoops, from rarefied data, hellinger transformed
-PS.zoops = subset_samples(PS.500.hell, sample_type=="Zooplankton")
-
-# both of the below are using rarefied and hellinger transformed data: PS.zoops and PS.water
-set.seed(1000)
-bc_zoops <- phyloseq::distance(PS.zoops, method = "bray")
-
-set.seed(1000)
-nmds3 <- metaMDS(bc_zoops,
-          distance = "bray",
-          k = 3,
-          maxit = 999, 
-          wascores = TRUE)
-
-species.scores3 <- as.data.frame(scores(nmds3))
-nmds.merge3 <- merge(sample_data(PS.zoops), species.scores3, by = 'row.names', all = TRUE)
-
-# run PERMANOVA
-set.seed(781)
-broad.model3 <- adonis2(bc_zoops ~ time_point*lake*organism, data = nmds.merge3, permutations = 999)
-broad.model3
-
-env.model3 <- adonis2(bc_zoops ~ latitude + elevation_m + temp_C + pH + cond + DOC + chla_ug.L + DO_perc, data = nmds.merge3, permutations = 999)
-env.model3 # latitude is best 
-
-anova(betadisper(bc_zoops, nmds.merge3$time_point)) # significant
-
-
-#######################
-# water only
-# just water, from rarefied data, hellinger transformed
-PS.water = subset_samples(PS.500.hell, sample_type=="Water")
-
-set.seed(1000)
-bc_water <- phyloseq::distance(PS.water, method = "bray")
-
-set.seed(1000)
-nmds4 <- metaMDS(bc_water,
-          distance = "bray",
-          k = 3,
-          maxit = 999, 
-          wascores = TRUE)
-
-species.scores4 <- as.data.frame(scores(nmds4))
-nmds.merge4 <- merge(sample_data(PS.water), species.scores4, by = 'row.names', all = TRUE)
-
-# run PERMANOVA
-set.seed(781)
-broad.model4 <- adonis2(bc_water ~ time_point * lake, data = nmds.merge4, permutations = 999)
-broad.model4
-
-env.model4 <- adonis2(bc_water ~ latitude + elevation_m + temp_C + pH + cond + DOC + chla_ug.L + DO_perc, data = nmds.merge4, permutations = 999)
-env.model4 #latitude, temp, chlorophyll
-
-anova(betadisper(bc_water, nmds.merge4$time_point)) #not significant
-anova(betadisper(bc_water, nmds.merge4$lake)) #not significant
 ```
 
 MAY NEED TO DELETE OR REPURPOSE THIS SECTION
@@ -1125,9 +1175,8 @@ permutest(betadisper(bc.hell, nmds.merge.hell$time_point), pairwise = T)
 #anosim(bc.hell, nmds.merge.hell$time_point, permutations = 1000)
 
 ```
-
-
-```{r environmental correlations}
+MAY NEED TO DELETE OR REPURPOSE THIS SECTION
+```{r environmental correlations, eval=FALSE}
 # USING RARIFIED-HELLINGER DATA
 
 cor.test(sample_data(PS.500.hell)$latitude, sample_data(PS.500.hell)$chla_ug.L)
@@ -1203,10 +1252,8 @@ ggscatter(sample_data(PS.500.hell), x = "latitude", y = "pH",
           cor.coef = TRUE, cor.method = "pearson",
           xlab = "latitude", ylab = "pH")
 ```
-
-
-```{r plotting lake elevations to visualize spatial differences}
-
+not necessary
+```{r plotting lake elevations to visualize spatial differences, eval=FALSE}
 elevations <- MetaD.SQ.Env %>%
   arrange(elevation_m) %>%
   mutate(lake = factor(lake, levels=c("Eastern Brook", "Serene", "Convict", "Virginia", "Blue", "Cooney"))) %>%
@@ -1224,9 +1271,8 @@ elevations
 dev.copy(pdf, "reanalysis/figures/elevations.pdf", height=5, width=5)
 dev.off()
 ```
-
-
-```{r mantel test, geographic distance}
+leverage this in the other paper
+```{r mantel test, geographic distance, eval=FALSE}
 # to calculate geographic distances between lakes
 # geographic distance dissim matrix - adapted from weinstein et al 
 gps <- as.data.frame(cbind(sample_data(PS.500.hell)$longitude, sample_data(PS.500.hell)$latitude))
@@ -1276,7 +1322,7 @@ transformed_coordinates <- procrustes_results$points
 # Time 1
 
 T1 <- subset_samples(PS.500.hell, time_point=="1")
-ORD.T1 <- ordinate(T1, method='MDS', distance='bray')
+ORD.T1 <- ordinate(T1, method='NDMS', distance='bray')
 
 
 MDS.ord.T1.lake<-plot_ordination(
@@ -1471,7 +1517,7 @@ phy_group_plots_combined <- plot_grid(
   nmds.lake,  nmds.basin, nmds.elevation,  nrow=2, ncol=3, labels = c("A","B", "C", "D", "E", "F", ""))
 
 phy_group_plots_combined
-dev.print(pdf, "figures/NMDS.groupeffects.pdf", height=12, width=18)
+dev.print(pdf, "figures/Figx.NMDS.groupeffects.pdf", height=12, width=18)
 dev.off()
 
 ```
@@ -1482,8 +1528,6 @@ centroid <- nmds.rarhell.df %>%
   group_by(time_point) %>%
   summarize(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
 str(nmds.rarhell.df)
-
-
 
 nmds.convict <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Convict", ], aes(x=NMDS1, y=NMDS2)) +
   geom_point(aes(color = time_point, shape = phy_group), size = 2.5) +
@@ -1646,8 +1690,6 @@ nmds.water.time <- ggplot(nmds.rarhell.df[nmds.rarhell.df$sample_type == "Water"
 nmds.water.time
 dev.print(pdf, "phyloseq analysis/figures/nmds.water.time.pdf", height=10, width=15)
 dev.off
-  
-
 ```
 
 

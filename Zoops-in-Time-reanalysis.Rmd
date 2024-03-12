@@ -52,6 +52,9 @@ ps.prune.LOCAL<-readRDS("output/reanalysis/ps.prune_local.RDS")
 ps.prune.LOCAL <- subset_taxa(ps.prune.LOCAL, Family!= "Mitochondria" | 
                         is.na(Family) & Class!="Chloroplast" | is.na(Class))
 
+# chloroplasts sneaking in under Order in some cyanobacteria
+ps.prune.LOCAL <- subset_taxa(ps.prune.LOCAL, (tax_table(ps.prune.LOCAL)[,"Order"]!="Chloroplast") | is.na(tax_table(ps.prune.LOCAL)[,"Order"]))
+
 # order the lakes by North to South,  in phyloseq 
 sample_data(ps.prune.LOCAL)$Lake <- factor(sample_data(ps.prune.LOCAL)$Lake, levels = 
                                            c("Cooney", "Blue", "Virginia", "Convict", "Serene", "Eastern Brook"))
@@ -293,7 +296,7 @@ table(sample_data(PS.rar)$sample_type) #288 samples: 28 water, 260 zooplankton
 
 ######################
 # rarify, and hellinger
-PS.500.hell.test = transform_sample_counts(PS.rar, function(x) x^0.5)
+PS.500.hell.test = transform_sample_counts(PS.rar, function(x) sqrt(x / sum(x)))
 
 ###### ###### ###### 
 # Compare full data vs. rarefied data beta diversity
@@ -377,12 +380,19 @@ table(sample_data(PS.500)$organism)
 sample_data(PS.500)$organism<-factor(sample_data(PS.500)$organism, levels =c("Daphnia", "Holopedium", 
                                             "Calanoid", "Cyclopoid", "Water")) # back to factor
 
+# make phylogenetic tree and add to phyloseq if wanting to do unifrac weight/unweighted
+library("ape")
+random_tree = rtree(ntaxa(PS.500), rooted=TRUE, tip.label=taxa_names(ps.prune.LOCAL))
+
+# add in
+phy_tree(PS.500)<-random_tree
 
 
 ##############################
 ######### hellinger transform the cleaned up data -- this is for beta diversity and NMDS etc
 # rarify, and hellinger
-PS.500.hell = transform_sample_counts(PS.500, function(x) x^0.5)
+PS.500.hell = transform_sample_counts(PS.500, function(x) sqrt(x / sum(x)))
+
 
 ###### check the # of samples in each taxa
 table(sample_data(PS.500.hell)$organism)
@@ -391,17 +401,47 @@ table(sample_data(PS.500.hell)$sample_type)
 #4 samples removed for low-abundance
 
 # rarefied, and hellinger transformed
-ord.hell <- ordinate(PS.500.hell, method = 'PCoA', distance = 'bray')
+ord.hell<- ordinate(PS.500.hell, method = 'PCoA', distance ="bray")
+ord.hell.unif <- ordinate(PS.500.hell, method = 'PCoA', distance ="unifrac")
+ord.hell.wunif <- ordinate(PS.500.hell, method = 'PCoA', distance ="wunifrac")
 
-PCoA.hell.rar.fin<- plot_ordination(
+#########
+#PCoA Bray
+PCoA.hell.rar.bray<- plot_ordination(
   physeq=PS.500.hell, 
   ordination = ord.hell) +
   geom_point(aes(color = organism), size = 2) +    
   stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
-  ggtitle("ALL taxa - hellinger-500.pau") +
+  ggtitle("ALL taxa - hellinger-500 Bray") +
   theme_classic() 
 
-PCoA.hell.rar.fin
+#PCoA - unifrac/weighted
+PCoA.hell.rar.wunif<- plot_ordination(
+  physeq=PS.500.hell, 
+  ordination = ord.hell.wunif) +
+  geom_point(aes(color = organism), size = 2) +    
+  stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
+  ggtitle("ALL taxa - hellinger-500.weight unifrac") +
+  theme_classic() 
+
+#PCoA - unifrac/unweighted
+PCoA.hell.rar.unif<- plot_ordination(
+  physeq=PS.500.hell, 
+  ordination = ord.hell.unif) +
+  geom_point(aes(color = organism), size = 2) +    
+  stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
+  ggtitle("ALL taxa - hellinger-500.unifrac") +
+  theme_classic() 
+
+# plot of all 3 PCoAs
+plot_grid(PCoA.hell.rar.bray + guides(color="none"), 
+          PCoA.hell.rar.wunif + guides(color="none") , 
+          PCoA.hell.rar.unif, ncol=3, rel_widths = c(3,3,4))
+dev.print(pdf, "figures/Unifract.ord.pdf", height=4.5, width=15)
+dev.off()
+
+#########
+PCoA.hell.rar.bray
 dev.copy(pdf, "figures/PCoA.hell.rar.fin.pdf", height=6, width=7)
 dev.off()
 ```
@@ -613,6 +653,7 @@ anova(rich.shan.sample) #sample signficant, always higher in water
 #### OBSERVED straight 3 way no-interaction (bc of missing samples post filtering)
 rich.obs.all<- lm(Observed~ time_point+lake+organism, data=Shan.rich.df)
 Anova(rich.obs.all, type=2) #time*lake significant
+plot(allEffects(rich.obs.all))
 
 #  posthoc just looking at groups
 obsrich.test.group<-emmeans(rich.obs.all, pairwise~organism)
@@ -1058,7 +1099,7 @@ water.phylo<-subset_samples(PS.500.hell, sample_type=="Water")
 set.seed(1000)
 bc_water.hell <- phyloseq::distance(water.phylo, method = "bray") # rarefied and hellinger transformed
 
-# run NMDS on Bray distance object (defined above for 'bc_500.hell'), this is
+# run NMDS on Bray distance object (defined above for 'bc_water.hell'), this is
 set.seed(520)
 nmds.water.rarhell <- metaMDS(bc_water.hell,
           distance = "bray",
@@ -1118,6 +1159,320 @@ NMDS.env.species<-plot_grid(NMDS.water + guides(color="none"),
 NMDS.env.species
 dev.copy(pdf, "figures/Figx.NMDS.env.specieswater.pdf", height=5, width=18)
 dev.off()
+```
+
+```{r core taxa daphnia}
+# https://microbiome.github.io/tutorials/Core.html
+
+#Zooplankton core taxa
+daph.phylo.rar<-subset_samples(PS.500, organism=="Daphnia")
+#keep only taxa with positive sums
+daph.phylo.pos <- prune_taxa(taxa_sums(daph.phylo.rar) > 0, daph.phylo.rar)
+# make compositional, relative abundance
+pseq.rel <- microbiome::transform(daph.phylo.pos, "compositional")
+
+taxa_names(pseq.rel) # shows ASVs
+
+#If you only need the names of the core taxa, do as follows. This returns the taxa that exceed the given prevalence and detection thresholds.
+core.taxa.standard <- core_members(pseq.rel, detection = 0.0001, prevalence = 50/100)
+
+colnames(tax_table(pseq.rel))[1] = "Domain" #rename Kingdom to Domain for the microbiome package needs
+pseq.rel.f <- microbiome::add_besthit(pseq.rel) # adds taxonomy to ASV names
+
+core.taxa.standard <- core_members(pseq.rel.f, detection = 0.0001, prevalence = 50/100)
+
+#full phyloseq
+pseq.core <- core(pseq.rel.f, detection = 0.0001, prevalence = .5)
+core.taxa <- taxa(pseq.core)
+class(core.taxa)
+
+# get the taxonomy data
+tax.mat <- tax_table(pseq.core)
+tax.df <- as.data.frame(tax.mat)
+
+# add the OTus to last column
+tax.df$OTU <- rownames(tax.df)
+
+# select taxonomy of only 
+# those OTUs that are core memebers based on the thresholds that were used.
+core.taxa.class <- dplyr::filter(tax.df, rownames(tax.df) %in% core.taxa)
+knitr::kable(head(core.taxa.class))
+
+
+# With compositional (relative) abundances
+det <- c(0, 0.1, 0.5, 2, 5, 20)/100
+prevalences <- seq(.05, 1, .05)
+
+plot_core(pseq.rel.f, prevalences = prevalences, 
+          detections = det, plot.type = "lineplot") + 
+  xlab("Relative Abundance (%)") + 
+  theme_bw()
+
+
+# Core with compositionals:
+prevalences <- seq(.05, 1, .05)
+detections <- round(10^seq(log10(1e-3), log10(.4), length = 10), 3)
+
+#Deletes "ASV" from taxa_names, e.g. ASV1 --> 1
+#taxa_names(ps.m3.rel) = taxa_names(ps.m3.rel) %>% str_replace("ASV", "")
+# Also define gray color palette
+gray <- gray(seq(0,1,length=5))
+
+daph.core <- plot_core(pseq.rel.f,
+  plot.type = "heatmap",
+  colours = gray,
+  prevalences = prevalences,
+  detections = detections, min.prevalence = .5) +
+  xlab("Detection Threshold (Relative Abundance (%))")
+
+daph.core <- daph.core + theme_bw() + ylab("ASVs")
+daph.core
+
+## make in color
+library(viridis)
+library(RColorBrewer)
+
+print(daph.core + scale_fill_viridis())
+dev.print(pdf, "figures/Daph.core.pdf", height=6, width=6)
+dev.off()
+```
+
+```{r core calan}
+#Zooplankton core taxa
+calan.phylo.rar<-subset_samples(PS.500, organism=="Calanoid")
+#keep only taxa with positive sums
+calan.phylo.pos <- prune_taxa(taxa_sums(calan.phylo.rar) > 0, calan.phylo.rar)
+# make compositional, relative abundance
+pseq.rel <- microbiome::transform(calan.phylo.pos, "compositional")
+
+taxa_names(pseq.rel) # shows ASVs
+
+#If you only need the names of the core taxa, do as follows. This returns the taxa that exceed the given prevalence and detection thresholds.
+core.taxa.standard <- core_members(pseq.rel, detection = 0.0001, prevalence = 50/100)
+
+colnames(tax_table(pseq.rel))[1] = "Domain" #rename Kingdom to Domain for the microbiome package needs
+pseq.rel.f <- microbiome::add_besthit(pseq.rel) # adds taxonomy to ASV names
+
+core.taxa.standard <- core_members(pseq.rel.f, detection = 0.0001, prevalence = 50/100)
+
+#full phyloseq
+pseq.core <- core(pseq.rel.f, detection = 0.0001, prevalence = .5)
+core.taxa <- taxa(pseq.core)
+class(core.taxa)
+
+# get the taxonomy data
+tax.mat <- tax_table(pseq.core)
+tax.df <- as.data.frame(tax.mat)
+
+# add the OTus to last column
+tax.df$OTU <- rownames(tax.df)
+
+# select taxonomy of only 
+# those OTUs that are core memebers based on the thresholds that were used.
+core.taxa.class <- dplyr::filter(tax.df, rownames(tax.df) %in% core.taxa)
+knitr::kable(head(core.taxa.class))
+
+
+# With compositional (relative) abundances
+det <- c(0, 0.1, 0.5, 2, 5, 20)/100
+prevalences <- seq(.05, 1, .05)
+
+plot_core(pseq.rel.f, prevalences = prevalences, 
+          detections = det, plot.type = "lineplot") + 
+  xlab("Relative Abundance (%)") + 
+  theme_bw()
+
+
+# Core with compositionals:
+prevalences <- seq(.05, 1, .05)
+detections <- round(10^seq(log10(1e-3), log10(.3), length = 10), 3)
+
+#Deletes "ASV" from taxa_names, e.g. ASV1 --> 1
+#taxa_names(ps.m3.rel) = taxa_names(ps.m3.rel) %>% str_replace("ASV", "")
+# Also define gray color palette
+gray <- gray(seq(0,1,length=5))
+
+calan.core <- plot_core(pseq.rel.f,
+  plot.type = "heatmap",
+  colours = gray,
+  prevalences = prevalences,
+  detections = detections, min.prevalence = .5) +
+  xlab("Detection Threshold (Relative Abundance (%))")
+
+calan.core <- calan.core + theme_bw() + ylab("ASVs")
+calan.core
+
+## make in color
+library(viridis)
+library(RColorBrewer)
+
+print(calan.core + scale_fill_viridis())
+dev.print(pdf, "figures/Calan.core.pdf", height=6, width=6)
+dev.off()
+```
+
+```{r cyclo core}
+#Zooplankton core taxa
+cyclop.phylo.rar<-subset_samples(PS.500, organism=="Cyclopoid")
+#keep only taxa with positive sums
+cyclop.phylo.pos <- prune_taxa(taxa_sums(cyclop.phylo.rar) > 0, cyclop.phylo.rar)
+# make compositional, relative abundance
+pseq.rel <- microbiome::transform(cyclop.phylo.pos, "compositional")
+
+taxa_names(pseq.rel) # shows ASVs
+
+#If you only need the names of the core taxa, do as follows. This returns the taxa that exceed the given prevalence and detection thresholds.
+core.taxa.standard <- core_members(pseq.rel, detection = 0.0001, prevalence = 50/100)
+
+colnames(tax_table(pseq.rel))[1] = "Domain" #rename Kingdom to Domain for the microbiome package needs
+pseq.rel.f <- microbiome::add_besthit(pseq.rel) # adds taxonomy to ASV names
+
+core.taxa.standard <- core_members(pseq.rel.f, detection = 0.0001, prevalence = 50/100)
+
+#full phyloseq
+pseq.core <- core(pseq.rel.f, detection = 0.0001, prevalence = .5)
+core.taxa <- taxa(pseq.core)
+class(core.taxa)
+
+# get the taxonomy data
+tax.mat <- tax_table(pseq.core)
+tax.df <- as.data.frame(tax.mat)
+
+# add the OTus to last column
+tax.df$OTU <- rownames(tax.df)
+
+# select taxonomy of only 
+# those OTUs that are core memebers based on the thresholds that were used.
+core.taxa.class <- dplyr::filter(tax.df, rownames(tax.df) %in% core.taxa)
+knitr::kable(head(core.taxa.class))
+
+
+# With compositional (relative) abundances
+det <- c(0, 0.1, 0.5, 2, 5, 20)/100
+prevalences <- seq(.05, 1, .05)
+
+plot_core(pseq.rel.f, prevalences = prevalences, 
+          detections = det, plot.type = "lineplot") + 
+  xlab("Relative Abundance (%)") + 
+  theme_bw()
+
+
+# Core with compositionals:
+prevalences <- seq(.05, 1, .05)
+detections <- round(10^seq(log10(1e-3), log10(.4), length = 10), 3)
+
+#Deletes "ASV" from taxa_names, e.g. ASV1 --> 1
+#taxa_names(ps.m3.rel) = taxa_names(ps.m3.rel) %>% str_replace("ASV", "")
+# Also define gray color palette
+gray <- gray(seq(0,1,length=5))
+
+cyclop.core <- plot_core(pseq.rel.f,
+  plot.type = "heatmap",
+  colours = gray,
+  prevalences = prevalences,
+  detections = detections, min.prevalence = .5) +
+  xlab("Detection Threshold (Relative Abundance (%))")
+
+cyclop.core <- cyclop.core + theme_bw() + ylab("ASVs")
+cyclop.core
+
+## make in color
+library(viridis)
+library(RColorBrewer)
+
+print(cyclop.core + scale_fill_viridis())
+dev.print(pdf, "figures/Cyclop.core.pdf", height=6, width=6)
+dev.off()
+```
+
+
+```{r core taxa daphnia by genus}
+###################### by Genus
+###########
+ps.gen <- aggregate_taxa(daph.phylo.pos, "Genus")
+
+# Check if any taxa with no genus classification. aggregate_taxa will merge all unclassified to Unknown
+any(taxa_names(ps.gen) == "Unknown")
+# Remove Unknown
+ps.gen <- subset_taxa(ps.gen, Genus!="Unknown")
+
+# make compositional, relative abundance
+pseq.rel.gen <- microbiome::transform(ps.gen, "compositional")
+
+#keep only taxa with positive sums
+pseq.rel.gen <- prune_taxa(taxa_sums(pseq.rel.gen) > 0, pseq.rel.gen)
+
+#### setup for plot
+prevalences <- seq(.05, 1, .05) # heatmap scale
+detections <- round(10^seq(log10(1e-3), log10(.3), length = 10), 3)
+
+p1 <- plot_core(pseq.rel.gen, 
+                plot.type = "heatmap", 
+                colours = rev(brewer.pal(5, "RdBu")),
+                prevalences = prevalences,
+                detections = detections, min.prevalence = 0.5) +
+    xlab("Detection Threshold (Relative Abundance (%))") + theme_bw() + ylab("ASVs")
+p1
+
+#############
+#A full phyloseq object of the core microbiota is obtained as follows:
+pseq.core <- core(pseq.rel, detection = 0, prevalence = .5) # 17 taxa
+
+# collapse rare taxa into other
+pseq.core2 <- aggregate_rare(pseq.rel, "Genus", detection = 0, prevalence = .5) # 11 taxa
+
+# core taxa and their names
+core.taxa <- taxa(pseq.core)
+
+#Total core abundance in each sample (sum of abundances of the core members
+core.abundance <- sample_sums(core(pseq.rel, detection = 0.01, prevalence = .9))
+
+# With compositional (relative) abundances
+det <- c(0, 0.1, 0.5, 2, 5, 20)/100
+prevalences <- seq(.05, 1, .05)
+
+plot_core(pseq.rel, 
+          prevalences = prevalences, 
+          detections = det, 
+          plot.type = "lineplot") + 
+  xlim(0,0.05)+
+  xlab("Relative Abundance (%)")
+
+
+########## heatmap
+detections <- round(10^seq(log10(0.01), log10(.2), length = 9), 3)
+# Also define gray color palette
+gray <- gray(seq(0,1,length=5))
+
+plot_core(pseq.rel,
+               plot.type = "heatmap", 
+               colours = gray,
+               prevalences = prevalences, 
+               detections = detections, 
+               min.prevalence = prevalence(pseq.rel, sort = TRUE)[100]) +
+  labs(x = "Detection Threshold\n(Relative Abundance (%))") +
+  theme(axis.text.y= element_text(size=8, face="italic"),
+        axis.text.x.bottom=element_text(size=8),
+        axis.title = element_text(size=10),
+        legend.text = element_text(size=8),
+        legend.title = element_text(size=10))
+
+# Core with absolute counts and horizontal view:
+# and minimum population prevalence (given as percentage)
+detections <- seq(from = 0, to = round(max(abundances(pseq.rel))/10, -1), by = 1)
+
+p <- plot_core(pseq.rel, plot.type = "heatmap",
+               prevalences = prevalences,
+               detections = detections,
+               colours = rev(brewer.pal(5, "Spectral")),
+               min.prevalence = .2, horizontal = TRUE) +
+  theme(axis.text.x= element_text(size=8, face="italic", hjust=1),
+        axis.text.y= element_text(size=8),
+        axis.title = element_text(size=10),
+        legend.text = element_text(size=8),
+        legend.title = element_text(size=10))
+
+print(p)
 ```
 
 MAY NEED TO DELETE OR REPURPOSE THIS SECTION
@@ -1320,7 +1675,6 @@ transformed_coordinates <- procrustes_results$points
 
 ```{r MDS plots by time point}
 # Time 1
-
 T1 <- subset_samples(PS.500.hell, time_point=="1")
 ORD.T1 <- ordinate(T1, method='NDMS', distance='bray')
 
@@ -1461,9 +1815,8 @@ dev.off()
  
 ```
 
-
+This code runs NMDS plots for all the data with different binning factors. May need to reduce and/or decide if PCoA or NMDS is best for showing "full community differences", which presently is in both places.
 ```{r General NMDS (time, lake, basin, etc.)}
-
 nmds.time <- ggplot(nmds.rarhell.df, aes(x=NMDS1, y=NMDS2, color = time_point)) +
   geom_point(aes(color = time_point, shape=sample_type), size = 2) + 
   stat_ellipse(level=0.9, lwd = 1, linetype = 2, aes(color=time_point)) +
@@ -1522,11 +1875,11 @@ dev.off()
 
 ```
 
-
+code here for separating lakes all by time, may not be useful considering the limited time effect
 ```{r NMDS plots broken down by each lake and time point}
 centroid <- nmds.rarhell.df %>% 
-  group_by(time_point) %>%
-  summarize(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
+  dplyr::group_by(time_point) %>%
+  dplyr::summarize(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
 str(nmds.rarhell.df)
 
 nmds.convict <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Convict", ], aes(x=NMDS1, y=NMDS2)) +
@@ -1543,8 +1896,6 @@ nmds.convict <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Convict", ], aes
         legend.title = element_text(size=13), #change legend title font size
         legend.text = element_text(size=11)) #change legend text font size
 nmds.convict
-dev.print(pdf, "reanalysis/figures/nmds.convict.pdf", height=10, width=15)
-dev.off
 
 nmds.east.brook <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Eastern Brook", ], aes(x=NMDS1, y=NMDS2)) +
   geom_point(aes(color = time_point, shape = phy_group), size = 2.5) +
@@ -1560,8 +1911,7 @@ nmds.east.brook <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Eastern Brook
         legend.title = element_text(size=13), #change legend title font size
         legend.text = element_text(size=11)) #change legend text font size
 nmds.east.brook
-dev.print(pdf, "reanalysis/figures/nmds.east.brook.pdf", height=10, width=15)
-dev.off
+
 
 nmds.serene <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Serene", ], aes(x=NMDS1, y=NMDS2)) +
   geom_point(aes(color = time_point, shape = phy_group), size = 2.5) +
@@ -1577,8 +1927,7 @@ nmds.serene <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Serene", ], aes(x
         legend.title = element_text(size=13), #change legend title font size
         legend.text = element_text(size=11)) #change legend text font size
 nmds.serene
-dev.print(pdf, "reanalysis/figures/nmds.serene.pdf", height=10, width=15)
-dev.off
+
 
 nmds.cooney <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Cooney", ], aes(x=NMDS1, y=NMDS2)) +
   geom_point(aes(color = time_point, shape = phy_group), size = 2.5) +
@@ -1594,8 +1943,7 @@ nmds.cooney <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Cooney", ], aes(x
         legend.title = element_text(size=13), #change legend title font size
         legend.text = element_text(size=11)) #change legend text font size
 nmds.cooney
-dev.print(pdf, "reanalysis/figures/nmds.cooney.pdf", height=10, width=15)
-dev.off
+
 
 nmds.blue <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Blue", ], aes(x=NMDS1, y=NMDS2)) +
   geom_point(aes(color = time_point, shape = phy_group), size = 2.5) +
@@ -1611,8 +1959,7 @@ nmds.blue <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Blue", ], aes(x=NMD
         legend.title = element_text(size=13), #change legend title font size
         legend.text = element_text(size=11)) #change legend text font size
 nmds.blue
-dev.print(pdf, "reanalysis/figures/nmds.blue.pdf", height=10, width=15)
-dev.off
+
 
 nmds.virginia <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Virginia", ], aes(x=NMDS1, y=NMDS2)) +
   geom_point(aes(color = time_point, shape = phy_group), size = 2.5) +
@@ -1628,8 +1975,7 @@ nmds.virginia <- ggplot(nmds.rarhell.df[nmds.rarhell.df$lake == "Virginia", ], a
         legend.title = element_text(size=13), #change legend title font size
         legend.text = element_text(size=11)) #change legend text font size
 nmds.virginia
-dev.print(pdf, "phyloseq analysis/figures/nmds.virginia.pdf", height=10, width=15)
-dev.off
+
 
 combined.nmds.lakes <- ggarrange(nmds.convict,
           nmds.east.brook,
@@ -1641,9 +1987,10 @@ combined.nmds.lakes <- ggarrange(nmds.convict,
           legend="bottom", align="hv", 
           font.label = list(size=10, color="black", family=NULL, position="top", labels="auto"))
 combined.nmds.lakes
-dev.print(pdf, "reanalysis/figures/combined.nmds.lakes.pdf", height=10, width=15)
-dev.off
+dev.print(pdf, "figures/combined.nmds.lakes.pdf", height=10, width=15)
+dev.off()
 
+##### 
 nmds.cladocera.time <- ggplot(nmds.rarhell.df[nmds.rarhell.df$phy_group == "cladocera", ], aes(x=NMDS1, y=NMDS2)) +
   geom_point(aes(color = time_point), size = 4) +
   stat_ellipse(level=0.9, lwd = 1, linetype = 2, aes(color = time_point)) +
@@ -1658,8 +2005,7 @@ nmds.cladocera.time <- ggplot(nmds.rarhell.df[nmds.rarhell.df$phy_group == "clad
         legend.text = element_text(size=18)) +#change legend text font size 
   ggtitle("Cladocera")
 nmds.cladocera.time
-dev.print(pdf, "reanalysis/figures/nmds.cladocera.time.pdf", height=10, width=15)
-dev.off
+
 
 nmds.copepoda.time <- ggplot(nmds.rarhell.df[nmds.rarhell.df$phy_group == "copepoda", ], aes(x=NMDS1, y=NMDS2)) +
   geom_point(aes(color = time_point), size = 4) +
@@ -1688,22 +2034,33 @@ nmds.water.time <- ggplot(nmds.rarhell.df[nmds.rarhell.df$sample_type == "Water"
   theme_bw() +
   ggtitle("Water")
 nmds.water.time
-dev.print(pdf, "phyloseq analysis/figures/nmds.water.time.pdf", height=10, width=15)
-dev.off
+
 ```
 
-
-```{r capscale and dbRDA --> having a hard time figuring this out}
+capscale and redundancy analysis, may not be useful
+```{r capscale and dbRDA}
 # Trying to find environmental variables that signiificantly explained variation in the 
 # 16S community composition
 
+# run NMDS on Bray distance object (defined above for 'bc_500.hell'), this is
+set.seed(520)
+nmds.rarhell <- metaMDS(bc_500.hell,
+          distance = "bray",
+          k = 3,
+          maxit = 999, 
+          wascores = TRUE)
+
+# get NMDS 1-3
+sp.scores.hell <- as.data.frame(scores(nmds.rarhell, display = "sites"))
+nmds.rarhell.df <- merge(sample_data(PS.500.hell), sp.scores.hell, by = 'row.names', all = TRUE)
+
+#############
 # Spatial variables were calculated using trend-surface analysis
 # calculated second-order orthogonal polynomial terms (latitude, longitude, latitude  × longitude, 
 # latitude2, longitude2) from UTM coordinates for  each lake using the “poly” function in R.
 library(sp)
-install.packages('rgdal')
-library(rgdal)
-gps <- as.data.frame(cbind(sample_data(PS.500)$longitude, sample_data(PS.500)$latitude))
+
+gps <- as.data.frame(cbind(sample_data(PS.500.hell)$longitude, sample_data(PS.500.hell)$latitude))
 coordinates(gps) <- c("V1", "V2")
 # Define the coordinate reference system (CRS) for the latitude and longitude data
 proj4string(gps) <- CRS("+proj=longlat +datum=WGS84")
@@ -1726,74 +2083,117 @@ coord_df$longitude_squared <- poly_terms[, 5]
 
 # CAPSCALE
 set.seed(10000)
-capscale_result <- capscale(bc.hell ~ cond + chla_ug.L + DO_perc + pH + temp_C + DOC + elevation_m, dfun = "distance", data = nmds.merge.hell, distance = "bray")
-capscale_model <- capscale(bc.hell ~ 1, data = nmds.merge.hell, distance = "bray")
-# fitting global model, then performing stepwise selection with ordiRstep
+# use 500-rarified, hellinger transformed bray-curits matrix 'bc_500.hell'
+capscale_result <- capscale(bc_500.hell ~ cond + chla_ug.L + DO_perc + pH + temp_C + DOC + 
+                              elevation_m, dfun = "distance", data = nmds.rarhell.df) 
+# could also be ~ ., for all variables
+capscale_model <- capscale(bc_500.hell ~ 1, data = nmds.rarhell.df) # intercept only
+
+# fitting global model, then performing stepwise selection with ordiRstep, compare intercept only to all explanatory variable model
 mod <- ordiR2step(capscale_model, scope = capscale_result)
-Anova(mod) # no matter the order of the explanatory variables in the original formula, the output of this shows that temp. is most important
+mod$anova # best model is "all" variables based on R2 and AIC
+
+Anova(mod) # no matter the order of the explanatory variables in the original formula, the output of this shows that cond, elevation, DO, pH, temp/DOC is most important (in order)
 summary(mod)
 plot(mod)
 
-# most parsimonious dbRDA model
-set.seed(10000)
-capscale_model <- capscale(bc.hell ~ temp_C, data = nmds.merge.hell, dfun = "distance", distance = "bray")
-capscale_model_an <- Anova(capscale_model)
-plot(capscale_model)
+mod_scores <- as.data.frame(scores(mod, choices = c(1,2), display = "sites")) #the CAP axes
+merge.cap<-merge(sample_data(PS.500.hell), mod_scores, by = 'row.names', all = TRUE) # the merged df
+row.names(merge.cap)<-merge.cap$Row.names
+
+#df
+cap_scores <- as.data.frame(scores(capscale_model, display = "sites", scaling=2)) #the MDS axes
+merge.cap<-merge(merge.cap, cap_scores, by = 'row.names', all = TRUE) # the merged df
+merge.cap<-merge.cap[-1]
+
+#biplot arrows
+mod_bp <- as.data.frame(scores(mod, choices = c(1,2), display = "bp", scaling=2)) #the CAP axes
+mod_bp$Env<-as.factor(rownames(mod_bp))
+
+# Type 2 scaling
+ordiplot(mod, display="lc", scaling = 2)
 
 
-mod_scores <- as.data.frame(scores(mod, choices = c(1,2), display = "sites"))
-merge.dbrda <- merge(mod_scores, nmds.merge.hell, by = "row.names")
+#plot it
+CAP.plot <- ggplot(merge.cap, aes(x = CAP1, y = CAP2, color=organism:basin)) +
+  geom_point(aes(shape=organism)) + 
+  stat_ellipse(aes(linetype=basin)) +
+  scale_color_manual(values=c("coral", "brown3", "goldenrod2", "darkolivegreen3", "mediumseagreen", "darkslategray3", "dodgerblue", "orchid", "darkorchid3")) +
+  xlab("CAP1 (Environment)") + ylab("CAP2 (Environment)") +
+  geom_segment(data = mod_bp,
+               aes(x = 0, xend = CAP1, y = 0, yend = CAP2),
+               arrow = arrow(length = unit(0.25, "cm")), colour = "gray20") +
+  geom_text(data = mod_bp, 
+            aes(x = CAP1, y = CAP2, label = Env), colour = "black",
+            size = 3)+
+  theme_bw()
+CAP.plot
 
-
-
-cap_scores <- as.data.frame(scores(capscale_model, display = "sites"))
-nmds.merge.hell$CAP1 <- cap_scores$CAP1
-nmds.merge.hell$MDS1 <- cap_scores$MDS1
-CAPxMDS_data <- data.frame(CAP1 = cap_scores$CAP1, MDS1 = cap_scores$MDS1, time = sample_data(PS.hell)$time_point, lake = sample_data(PS.hell)$lake, temp = sample_data(PS.hell)$temp_C)
-CAPxMDS <- ggplot(CAPxMDS_data, aes(x = CAP1, y = MDS1, color = lake)) +
-  geom_point() + stat_ellipse() +
+CAPxMDS.plot <- ggplot(merge.cap, aes(x = CAP1, y = MDS1, color = organism:basin)) +
+  geom_point() + stat_ellipse(aes(linetype=basin)) +
+  scale_color_manual(values=c("coral", "brown3", "goldenrod2", "darkolivegreen3", "mediumseagreen", "darkslategray3", "dodgerblue", "orchid", "darkorchid3")) +
   #geom_smooth(aes(color=lake, fill=lake), method = "lm", alpha = .2) +
   xlab("CAP1 (Environment)") + ylab("MDS1 (Bray-Curtis)") +
   theme_bw()
-CAPxMDS
+CAPxMDS.plot
 
-ordiplot(CAPxMDS_data[,c(1:2)], type="n", main=substitute(paste("")), cex.main=1, display="sites", xlim=c(-0.25, 0.8), cex.lab=0.8, cex.axis=0.8)
-abline(h = 0, lty = "dotted")
-abline(v = 0, lty = "dotted")
-points(capscale_model, "sites", cex=0.8, pch=16, col = "gray62")
-ordihull(environm_plot, groups=nmds.merge.hell$lake, draw="polygon", alpha=80, col = unique(lake_colors))
-legend("topright", legend=levels(lake.group), cex=1, pch=16, col=unique(lake_colors), pt.cex=1, bty="n")
-par.new=T
+```
 
-
-
+testing dbRDA in phyloseq with env and ordination 'in house', not especially useful
+```{r, eval=FALSE}
+## tried this with dbRDA
 
 #dbRDA
 set.seed(10000) 
-upr <- dbrda(bc.hell ~ temp_C + elevation_m + cond + chla_ug.L + DOC + DO_perc + pH, data = nmds.merge.hell)
-lwr <- dbrda(bc.hell ~ 1, data = nmds.merge.hell, na.action = 'na.omit')
+upr <- dbrda(bc_500.hell ~ temp_C + elevation_m + cond + chla_ug.L + DOC + DO_perc + pH, 
+             data = nmds.rarhell.df)
+lwr <- dbrda(bc_500.hell ~ 1, data = nmds.rarhell.df, na.action = 'na.omit')
 # fitting global model, then performing stepwise selection with ordiRstep
 mod_selec <- ordiR2step(lwr, scope = upr)
-anova(mod_selec)
+mod_selec$anova # best model is "all" variables based on R2 and AIC
+
+Anova(mod_selec)
 anova(mod_selec, by = "axis", permu = 200)
 summary(mod_selec)
 RsquareAdj(mod_selec)
 screeplot(mod_selec)
 
 
-dbRDA <- dbrda(formula = bc.hell ~ DOC, data = nmds.merge3, na.action = "na.omit")
-plot(dbRDA)
+dbRDA <- dbrda(formula = bc_500.hell ~ temp_C + elevation_m + cond + chla_ug.L + DOC + DO_perc + pH, 
+               data = nmds.rarhell.df, na.action = "na.omit") %>% 
+               scores(tidy = TRUE) %>% 
+              split(.[["score"]])
+
+plot(dbRDA, display=c('bp', 'wa'), scaling=1) #wa is another
+
+
+#########
+
+# Create ordination
+dbrda_test = ordinate(PS.500.hell, method="RDA", distance="bray") #dbRDA
+
+# Mimic biplot from example
+p0 = plot_ordination(PS.500.hell, dbrda_test, color = "organism")
+p0
+
+# select envs. traits
+env.df<-nmds.rarhell.df %>% 
+  dplyr::select(temp_C, elevation_m, cond, chla_ug.L, DOC, DO_perc, pH)
+
+plt1 <- gg_ordiplot(dbrda_test, groups = nmds.rarhell.df$organism, plot = FALSE, conf = 0.90)
+plt2 <- gg_envfit(dbrda_test, env = env.df, groups = nmds.rarhell.df$organism, plot = FALSE)
+plt2$plot + geom_path(data = plt1$df_ellipse, aes(x=x, y=y, color=Group)) +
+  guides(color=guide_legend(title="phyloseq env dbRDA"))
 ```
 
 
 ```{r stacked bar plots}
-
 ########### plotting relative abundance, help from Megan Demmel, this is what I will use for analysis of relative abundances/ composition
 
 #ASV_rel_abund <- transform_sample_counts(PS.fin, function(x) x/sum(x))
 #pm <- psmelt(ASV_rel_abund)
 pm <- psmelt(PS.500)
-Abund <- aggregate(Abundance ~ sample_type + phy_group + lake + time_point + sequencing_ID + Class, data=pm, FUN=sum)
+Abund <- aggregate(Abundance ~ sample_type + organism + phy_group + lake + time_point + sequencing_ID + Class, data=pm, FUN=sum)
 sam <- aggregate(Abundance ~ sample_type + phy_group + lake + time_point +sequencing_ID, data=pm, FUN=sum) # this should include everything Abund has except for Class
 
 colnames(sam)[ncol(sam)] <- "tot.abund" # renaming the last column 'tot.abund' so that we can differentiate that from rel.abund
@@ -1805,7 +2205,7 @@ View(Abund.final)
 Abund.final$Class[Abund.final$rel_abund <= 0.05] <- "Other (<5%)" # classes that have rel.abund less than 5% will be named as other
 
 # plot by sample type
-overall.comp.class <- ggplot(Abund.final, aes(x=phy_group, y=rel_abund, fill=Class, color=Class)) +
+overall.comp.class <- ggplot(Abund.final, aes(x=organism, y=rel_abund, fill=Class, color=Class)) +
   geom_bar(aes(fill=Class, color=Class), stat="identity", position="fill") +
   xlab("Sample Type") +ylab("Relative Abundance (%)") + theme_bw() +
   theme(axis.text.x=element_text(size=11)) + theme(axis.title.x=element_text(size=13)) +
@@ -1813,7 +2213,7 @@ overall.comp.class <- ggplot(Abund.final, aes(x=phy_group, y=rel_abund, fill=Cla
   scale_fill_manual(values = c("red4", "orangered", "gold", "lightgreen", "turquoise3", "seagreen4", "lightskyblue", "tan", "navy", "royalblue3", "tan4", "lightsalmon", "gray54")) +
   scale_color_manual(values = c("red4", "orangered", "gold", "lightgreen", "turquoise3", "seagreen4", "lightskyblue", "tan", "navy", "royalblue3", "tan4", "lightsalmon", "gray54"))
 overall.comp.class
-dev.copy(pdf, "reanalysis/figures/overall.comp.class.pdf", height=6, width=10)
+dev.copy(pdf, "figures/overall.comp.class.pdf", height=6, width=10)
 dev.off()
 
 # rel abund plot across time, lake, and sample type
@@ -1826,9 +2226,12 @@ Facet <- ggplot(Abund.final, aes(x = time_point, y = rel_abund, fill= Class, col
   scale_fill_manual(values = c("red4", "orangered", "gold", "lightgreen", "turquoise3", "seagreen4", "lightskyblue", "tan", "navy", "royalblue3", "tan4", "lightsalmon", "gray54")) +
   scale_color_manual(values = c("red4", "orangered", "gold", "lightgreen", "turquoise3", "seagreen4", "lightskyblue", "tan", "navy", "royalblue3", "tan4", "lightsalmon", "gray54"))
 Facet
-dev.copy(pdf, "reanalysis/figures/Facet.pdf", height=6, width=12)
+dev.copy(pdf, "figures/Facet.pdf", height=10, width=12)
 dev.off()
+```
 
+may not be necessry
+```{r stacked bar jacrel}
 # Help from Dr. Jackrel
 
 my_class <- PS.500 %>%
@@ -1900,7 +2303,6 @@ dev.off()
 ```{r top average taxa compositions for each sample type}
 # missing this data, can't compute
 dominant_taxa <- summaryBy(rel_abund ~ Class*sample_type, data = Abund.final, FUN = mean)
-
 ```
 
 

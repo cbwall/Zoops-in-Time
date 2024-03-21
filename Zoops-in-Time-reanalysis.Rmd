@@ -1287,8 +1287,8 @@ Relative abundance stacked bar plot
 #ASV_rel_abund <- transform_sample_counts(PS.fin, function(x) x/sum(x))
 #pm <- psmelt(ASV_rel_abund)
 pm <- psmelt(PS.500)
-Abund <- aggregate(Abundance ~ sample_type + organism + phy_group + lake + time_point + sequencing_ID + Class, data=pm, FUN=sum)
-sam <- aggregate(Abundance ~ sample_type + phy_group + lake + time_point +sequencing_ID, data=pm, FUN=sum) # this should include everything Abund has except for Class
+Abund <- aggregate(Abundance ~ sample_type + organism + phy_group + lake + time_point + sampleNames + Class, data=pm, FUN=sum)
+sam <- aggregate(Abundance ~ sample_type + phy_group + lake + time_point +sampleNames, data=pm, FUN=sum) # this should include everything Abund has except for Class
 
 colnames(sam)[ncol(sam)] <- "tot.abund" # renaming the last column 'tot.abund' so that we can differentiate that from rel.abund
 
@@ -1349,52 +1349,86 @@ dev.off()
 # using Abund.final from the last code chunk
 # testing the effects of time, lake, and sample type on the 5 most dominant classes of bacteria
 
-# GAMMAPROTEOBACTERIA
+############ GAMMAPROTEOBACTERIA
 gammaproteobacteria <- subset(Abund.final, Class == "Gammaproteobacteria")
-gammaproteobacteria <- summaryBy(rel_abund ~ sequence_ID, data = gammaproteobacteria, FUN = sum)
+gammaproteobacteria <- summaryBy(rel_abund ~ sampleNames, data = gammaproteobacteria, FUN = sum)
 gammaproteobacteria <- data.frame(gammaproteobacteria, row.names = gammaproteobacteria[,1])
-gammaproteobacteria <- merge(gammaproteobacteria, sample_data(PS.fin), by = "row.names")
-Anova(lm(rel_abund.sum ~ time_point + phy_group, data = gammaproteobacteria)) # time and phy
+names(gammaproteobacteria)[names(gammaproteobacteria) == 'rel_abund.sum'] <- 'Gamma.rel_abund.sum'
+gammaproteobacteria <- merge(gammaproteobacteria, sample_data(PS.500), by = "row.names")
+names(gammaproteobacteria)[names(gammaproteobacteria) == 'sampleNames.x'] <- 'sampleNames'
+
+#run a model
+Gam.model<-lm(Gamma.rel_abund.sum ~ time_point + lake + phy_group, data = gammaproteobacteria)
+Anova(Gam.model, type=2)
+plot(allEffects(Gam.model))
+# time, lake, phy.group all matter
 
 # testing environmental effects on gamaproteobacteria abundances
-FitAll.gamma <- lm(rel_abund.sum ~ temp_C + DO_perc + pH + DOC + elevation_m + cond + chla_ug.L, data = gammaproteobacteria)
+FitAll.gamma <- lm(Gamma.rel_abund.sum ~ temp_C + DO_perc + pH + DOC + elevation_m + cond + chla_ug.L, data = gammaproteobacteria)
 step(FitAll.gamma, direction = "both")
-summary(lm(rel_abund.sum ~ DOC + elevation_m + cond + chla_ug.L, data = gammaproteobacteria)) # chlorophyll is significant but relies on other variables
-gamma_chla <- ggplot(gammaproteobacteria, aes(x=chla_ug.L, y=rel_abund.sum)) +
+
+# best model
+Best.gamma<-lm(Gamma.rel_abund.sum ~ DOC + cond, data = gammaproteobacteria)
+summary(Best.gamma)
+Anova(Best.gamma) # conductivity is most important, Gamma decline with conduct. overall
+
+gamma_cond <- ggplot(gammaproteobacteria, aes(x=cond, y=Gamma.rel_abund.sum)) +
   geom_point() +
-  geom_smooth() + xlab("Chlorophyll a (ug/L)") + ylab("Gammaproteobacteria Abundance") +
+  geom_smooth(method=lm)+
+  xlab("Conductivity(uS/L)") + ylab("Gammaproteobacteria Abundance") +
   theme(axis.text.x=element_text(size=14)) + theme(axis.title.x=element_text(size=16)) +
   theme(axis.text.y=element_text(size=14)) + theme(axis.title.y=element_text(size=16))
-gamma_chla
-dev.copy(pdf, "phyloseq analysis/figures/gamma_chla.pdf", height=6, width=10)
-dev.off()
-
-gamma_chla <- ggscatter(gammaproteobacteria, x = "chla_ug.L", y = "rel_abund.sum",
-          add = "reg.line", conf.int = TRUE, 
-          cor.coef = TRUE, cor.coeff.args = list( method = "pearson"),cor.coef.coord = c(0.0,0.98),
-          xlab = ("Chlorophyll a (ug/L)"), ylab = ("Gammaproteobacteria Abundance"))
-gamma_chla 
-dev.copy(pdf, "phyloseq analysis/figures/gamma_chla.pdf", height=6, width=10)
+gamma_cond
+dev.copy(pdf, "figures/gamma_cond.pdf", height=6, width=10)
 dev.off()
 
 
-# ALPHAPROTEOBACTERIA
+########### ALPHAPROTEOBACTERIA
 alphaproteobacteria <- subset(Abund.final, Class == "Alphaproteobacteria")
-alphaproteobacteria <- summaryBy(rel_abund ~ sequence_ID, data = alphaproteobacteria, FUN = sum)
+alphaproteobacteria <- summaryBy(rel_abund ~ sampleNames, data = alphaproteobacteria, FUN = sum)
 alphaproteobacteria <- data.frame(alphaproteobacteria, row.names = alphaproteobacteria[,1])
-alphaproteobacteria <- merge(alphaproteobacteria, sample_data(PS.fin), by = "row.names")
-Anova(lm(rel_abund.sum ~ lake + time_point + phy_group, data = alphaproteobacteria)) # time
-TukeyHSD(aov(lm(rel_abund.sum ~ lake + time_point + phy_group, data = alphaproteobacteria)))
-FitAll.alpha <- lm(rel_abund.sum ~ temp_C + DO_perc + pH + DOC + elevation_m + cond + chla_ug.L, data = alphaproteobacteria)
-step(FitAll.alpha, direction = "both") # chla
-summary(lm(rel_abund.sum ~ chla_ug.L, data = alphaproteobacteria)) #nope, chl a is not actually significant on its own
+names(alphaproteobacteria)[names(alphaproteobacteria) == 'rel_abund.sum'] <- 'Alphapr.rel_abund.sum'
+alphaproteobacteria <- merge(alphaproteobacteria, sample_data(PS.500), by = "row.names")
+names(alphaproteobacteria)[names(alphaproteobacteria) == 'sampleNames.x'] <- 'sampleNames'
+
+#run a model
+Alpha.model<-lm(Alphapr.rel_abund.sum ~ time_point + lake + phy_group, data = alphaproteobacteria)
+Anova(Alpha.model, type=2)
+plot(allEffects(Alpha.model))
+# time, lake, phy.group all matter
+
+# testing environmental effects on alphaproteobacteria abundances
+FitAll.alpha<- lm(Alphapr.rel_abund.sum ~ temp_C + DO_perc + pH + DOC + elevation_m + cond + chla_ug.L, data = alphaproteobacteria)
+step(FitAll.alpha, direction = "both")
+
+# best model
+Best.alpha<-lm(Alphapr.rel_abund.sum ~ DO_perc, data = alphaproteobacteria)
+summary(Best.alpha)
+Anova(Best.alpha) # DO is most important, Alpha decline with DO increasing
+plot(allEffects(Best.alpha))
+
+# plot it
+alpha_DO <- ggplot(alphaproteobacteria, aes(x=DO_perc, y=Alphapr.rel_abund.sum)) +
+  geom_point() +
+  geom_smooth(method=lm )+
+  xlab("DO(%)") + ylab("Aphaproteobacteria Abundance") +
+  theme(axis.text.x=element_text(size=14)) + theme(axis.title.x=element_text(size=16)) +
+  theme(axis.text.y=element_text(size=14)) + theme(axis.title.y=element_text(size=16))
+alpha_DO
+dev.copy(pdf, "figures/alphap_O2.pdf", height=6, width=10)
+dev.off()
 
 
 #ACTINOBACTERIA
 actinobacteria <- subset(Abund.final, Class == "Actinobacteria")
-actinobacteria <- summaryBy(rel_abund ~ sequence_ID, data = actinobacteria, FUN = sum)
+actinobacteria <- subset(Abund.final, Class == "Actinobacteria")
+actinobacteria <- summaryBy(rel_abund ~ sampleNames, data = actinobacteria, FUN = sum)
 actinobacteria <- data.frame(actinobacteria, row.names = actinobacteria[,1])
-actinobacteria <- merge(actinobacteria, sample_data(PS.fin), by = "row.names")
+names(actinobacteria)[names(actinobacteria) == 'rel_abund.sum'] <- 'Actinob.rel_abund.sum'
+actinobacteria <- merge(actinobacteria, sample_data(PS.500), by = "row.names")
+names(actinobacteria)[names(actinobacteria) == 'sampleNames.x'] <- 'sampleNames'
+
+
 Anova(lm(rel_abund.sum ~ lake*time_point*phy_group, data = actinobacteria)) # time
 act.aov <- aov(lm(rel_abund.sum ~ lake + time_point + phy_group, data = actinobacteria))
 TukeyHSD(act.aov)
@@ -1790,5 +1824,45 @@ daph.genera.core
 dev.print(pdf, "figures/daph.genera.core.pdf", height=5, width=7)
 dev.off()
 
+```
+
+Don't need this, but useful if wanting to look at unfrac-weighted/unweighted
+```{r PCoA testing unifrac, eval=FALSE}
+# PCoA - unifrac/weighted
+
+# make phylogenetic tree and add to phyloseq if wanting to do unifrac weight/unweighted
+library("ape")
+random_tree = rtree(ntaxa(PS.500), rooted=TRUE, tip.label=taxa_names(ps.prune.LOCAL))
+
+# add in
+phy_tree(PS.500)<-random_tree
+
+
+ord.hell.unif <- ordinate(PS.500.hell, method = 'PCoA', distance ="unifrac")
+ord.hell.wunif <- ordinate(PS.500.hell, method = 'PCoA', distance ="wunifrac")
+
+PCoA.hell.rar.wunif<- plot_ordination(
+  physeq=PS.500.hell, 
+  ordination = ord.hell.wunif) +
+  geom_point(aes(color = organism), size = 2) +    
+  stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
+  ggtitle("ALL taxa - hellinger-500.weight unifrac") +
+  theme_classic() 
+
+#PCoA - unifrac/unweighted
+PCoA.hell.rar.unif<- plot_ordination(
+  physeq=PS.500.hell, 
+  ordination = ord.hell.unif) +
+  geom_point(aes(color = organism), size = 2) +    
+  stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
+  ggtitle("ALL taxa - hellinger-500.unifrac") +
+  theme_classic() 
+
+# plot of all 3 PCoAs
+plot_grid(PCoA.hell.rar.bray + guides(color="none"), 
+          PCoA.hell.rar.wunif + guides(color="none") , 
+          PCoA.hell.rar.unif, ncol=3, rel_widths = c(3,3,4))
+dev.print(pdf, "figures/Unifract.ord.pdf", height=4.5, width=15)
+dev.off()
 ```
 

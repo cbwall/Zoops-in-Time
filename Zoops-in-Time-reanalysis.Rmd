@@ -31,15 +31,549 @@ pacman::p_load('knitr', 'microbiome', 'phyloseq', 'tidyr', 'tidyverse', 'knitr',
                'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan", "cowplot", 'doBy', 'ecodist',
                'glue', 'geosphere', 'data.table', 'patchwork', 'car', 'ggcorrplot', 'FactoMineR', 'devtools', 'reshape',
                'lattice',  'plyr', 'magrittr', 'factoextra', 'multcompView', 'decontam', 'factoextra', 'car', 'mia', 
-               'ade4', 'fossil', 'picante', 'reshape', 'readr', 'corrr', 'scipplot', 'Hmisc', "MASS", "FSA", "sciplot",
+               'ade4', 'fossil', 'picante', 'reshape', 'readr', 'corrr', 'Hmisc', "MASS", "FSA", "sciplot",
                "decontam","BiocManager", 'ggpubr', 'ggmap', "ggordiplots", "fossil", "SpiecEasi", "igraph", "huge", 
-               "leaflet", "ggtree", "colorBlindness", "RColorBrewer","MicrobiotaProcess", "predict3d", "ggiraphExtra")
+               "leaflet", "ggtree", "colorBlindness", "RColorBrewer","MicrobiotaProcess", "predict3d", "ggiraphExtra",
+               "data.table", "betapart", "metagMisc", "naniar", "rstatix")
 ```
 
 ## Overview
 
-### Import Phyloseq
-Import the data and modify the metadata to meet downstream needs
+### Envrironmental Data
+- depth of the lakes for table
+```{r depth data}
+field.df<-read.csv("data/field_metadata.csv")
+field.df$date.simple<-field.df$time_point
+field.df$date.simple<-recode_factor(field.df$date.simple, 
+                                "1" = "25-Jun",
+                                "2" = "6-Jul",
+                                "3" = "21-Jul",
+                                "4" = "4-Aug",
+                                "5" = "22-Aug")
+
+
+str(field.df)
+field.df$TDP..ug.L<-as.numeric(field.df$TDP..ug.L)
+field.df$TDN..ug.L<-as.numeric(field.df$TDN..ug.L)
+
+## replace outliers in nutrient analysis
+field.df<-field.df %>% 
+  naniar::replace_with_na(replace = list(TDP..ug.L = 4102.48))
+
+# order the lakes by North to South or upstream in phyloseq 
+field.df$lake <- factor(field.df$lake, levels = 
+                                    c("Cooney", "Blue", "Virginia", "Convict", "Serene", "Eastern Brook"))
+# make meters
+field.df$depth..m<-field.df$depth..ft/0.3048
+
+#fix str
+field.df$lake<-as.factor(field.df$lake)
+field.df$time_point<-as.factor(field.df$time_point)
+
+# depth mean and SE
+mean.depth.m<-aggregate(depth..m~lake, FUN=mean, data=field.df)
+mean.depth.SE<-aggregate(depth..m~lake, function(x) sd(x) / sqrt(length(x)), data=field.df)
+
+colnames(mean.depth.m)<-c("lake", "depth..m")
+colnames(mean.depth.SE)<-c("lake", "depth..m.SE")
+depth.df<-cbind(mean.depth.m[1:2], mean.depth.SE[2])
+
+```
+
+- nutrients and water chemistry
+```{r nutrients}
+######## TDP
+
+TP.plot<-ggplot(field.df, aes(x=date.simple, y=TDP..ug.L, group=lake, color=lake)) + 
+  geom_point(size=2)+
+  geom_line() + 
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  xlab("Sampling Time Point") + 
+  ylab(expression(paste("TDP", ~(mu*g~L^-1), sep = "")))+ theme_classic() + 
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+TP.plot
+
+
+######## TDN
+
+TN.plot<-ggplot(field.df, aes(x=date.simple, y=TDN..ug.L, group=lake, color=lake)) + 
+  geom_point(size=2)+
+  geom_line() + 
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  xlab("Sampling Time Point") + 
+  ylab(expression(paste("TDN", ~(mu*g~L^-1), sep = ""))) + theme_classic() + 
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+TN.plot
+
+
+####### DOC
+
+DOC.plot<-ggplot(field.df, aes(x=date.simple, y=DOC_values, group=lake, color=lake)) + 
+  geom_line() +  
+  geom_point(size = 2)+  
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  xlab("Sampling Time Point") + 
+  ylab(expression(paste("DOC", ~(mg~L^-1), sep = ""))) + theme_classic() + 
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+DOC.plot
+
+
+####### chlorophyll
+
+chla.plot<- ggplot(field.df, aes(x= date.simple, y=chla..ug.L, group=lake, color=lake)) + 
+  geom_line() +  
+  geom_point(size = 2)+  
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  xlab("Sampling Time Point") + 
+  coord_cartesian(ylim=c(0, 2.5))+
+  theme(axis.text = element_text(size=7)) +  
+  ylab(expression(paste("Chl-a", ~(mu*g~ L^-1), sep = "")))  + theme_classic() + 
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+chla.plot
+
+
+######## Dissolved oxygen
+
+DO.percent.plot<-ggplot(field.df, aes(x= date.simple, y=DO..perc, group=lake, color=lake)) + 
+  geom_line() +  
+  geom_point(size = 2)+ 
+  coord_cartesian(ylim=c(60, 90))+
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  xlab("Sampling Time Point") + ylab("DO (%)") +
+  theme(text = element_text(size = 10)) + theme_classic() + 
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+DO.percent.plot
+
+
+######### Conductivity
+
+conductivity.plot<-ggplot(field.df, aes(x= date.simple,  y=cond, group=lake, color=lake)) +
+  geom_line() +  
+  geom_point(size = 2)+ 
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  xlab("Sampling Time Point") +
+  coord_cartesian(ylim=c(0, 180))+
+  ylab(expression(paste("Conductivity", ~(mu*S~ cm^-1), sep = ""))) + theme_classic() + 
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+conductivity.plot
+
+
+###### Specific conductivity
+
+spc.plot <- ggplot(field.df, aes(x= date.simple,  y=spc, group=lake, color=lake)) + 
+  geom_line() +  
+  geom_point(size = 2)+ 
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  xlab("Sampling Time Point") +
+  coord_cartesian(ylim=c(0, 200))+
+  ylab(expression(paste("SPC", ~(mu*S~ cm^-1)))) + theme_classic() +  
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+spc.plot
+
+
+######## pH
+
+pH.plot<-ggplot(field.df, aes(x= date.simple,  y=pH, group=lake, color=lake)) + 
+  geom_line() +  
+  geom_point(size = 2)+ 
+  coord_cartesian(ylim=c(5, 10))+
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  xlab("Sampling Time Point") + theme_classic() +  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+pH.plot
+
+######## Surface temp
+
+laketemp.plot<-ggplot(field.df, aes(x= date.simple,  y=temp..C, group=lake, color=lake)) + 
+  geom_line() +  
+  geom_point(size = 2)+ 
+  coord_cartesian(ylim=c(12, 22))+
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4")) +
+  xlab("Sampling Time Point") + 
+  ylab("Temperature (°C)") + theme_classic() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+laketemp.plot
+
+## get legend
+extract.legend.env <- get_legend(
+  # create some space to the left of the legend
+  laketemp.plot + theme(legend.box.margin = margin(0, 0, 0, 10)))
+
+
+#### combine plot
+env.plots<-plot_grid(laketemp.plot + guides(color="none"), DO.percent.plot + guides(color="none"), 
+          pH.plot + guides(color="none"), conductivity.plot + guides(color="none"), 
+          chla.plot + guides(color="none"), DOC.plot + guides(color="none"), 
+          TN.plot + guides(color="none"), TP.plot + guides(color="none"),
+          ncol=4, rel_widths = c(7,7,7,7,7,7,7,1), labels=c("A", "B", "C", "D", "E", "F", "G", "H"))
+
+env.plots
+dev.copy(pdf, "figures/Fig2.env.plots.pdf", height=7, width = 12)
+dev.off()
+
+
+```
+
+- air temperatures and precipitation
+```{r weather air temp and precipitation)}
+# air temp and rainfall
+
+weather <- read.csv('data/weather.SNARL.csv', header = TRUE)
+weather$date <- as.Date(weather$date, format="%m/%d/%y")
+coeff<-0.5
+
+weather.plot <- ggplot(weather, aes(x = date)) +
+  geom_line(aes(y = avg.temp.air.C, color = "avg.temp"), linewidth = 1, linetype = "solid") +
+  geom_line(aes(y = rain.total.mm*coeff, color = "rain.total"), linewidth = 1, linetype = "solid") +
+  labs(x = "Date", y = "Average Air Temperature (°C)", title = NULL) + 
+  scale_y_continuous(sec.axis= sec_axis(~./coeff, name = "Total Daily Precipitation (mm)")) +
+  scale_x_date(breaks = "2 week", date_labels = "%b %d") +
+  scale_color_manual( values = c("rain.total" = "steelblue", "avg.temp" = "orangered"), breaks = c("avg.temp", "rain.total")
+  ) + theme_classic() +
+theme(axis.text.x = element_text(angle = 90))
+weather.plot
+
+dev.print(pdf, "figures/FigS1.Air.Rain.snarl.plot.pdf", width = 6, height = 6)
+dev.off()
+
+```
+
+
+### Zooplankton Community
+  
+- dot-line plot of the common taxa
+```{r testing effects on densities and plotting}
+
+# load in the density data
+# density is the number of zoops per liter
+counts <- read.csv('data/Zoop.community.csv')
+counts$time_point <- as.factor(counts$time_point)
+counts$lake <- as.factor(counts$lake)
+str(counts)
+
+counts$date.simple<-recode_factor(counts$time_point, 
+                                "1" = "25-Jun",
+                                "2" = "6-Jul",
+                                "3" = "21-Jul",
+                                "4" = "4-Aug",
+                                "5" = "22-Aug")
+
+# order the lakes by North to South or upstream in phyloseq 
+counts$lake <- factor(counts$lake, levels = 
+                                    c("Cooney", "Blue", "Virginia", "Convict", "Serene", "Eastern Brook"))
+
+# make sample number (each sample is a different row)
+counts$sample <- row.names(counts)
+
+
+# make a new column at the end for total added density of all zoops at each time/lake combo?
+counts_mod <- counts[,c(22:33)]%>%
+  mutate(sum_of_rows = rowSums(.))
+counts_mod
+
+# add this new column to the orginal "counts" df 
+counts$dens.row.sums <- counts_mod$sum_of_rows
+
+
+# make a new column for region category
+counts$region <- as.factor(ifelse(counts$lake == "Eastern Brook" | 
+                                    counts$lake == "Serene" |
+                                  counts$lake == "Convict", "South", "North"))
+
+
+#### Total densities
+overall.dens.plot <- ggplot(counts, aes(x = date.simple, y = dens.row.sums, color = lake, group = lake)) +
+  geom_point(size=2) + 
+  geom_line() + 
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+ 
+  labs( x = "Sampling Time Point", y = "Total Zooplankton Density (#/L)") +theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# model
+tot.dens.mod<-lm(dens.row.sums ~ time_point + lake, data = counts)
+tot.dens.aov<-Anova(tot.dens.mod, type=2) #time point trend
+plot(allEffects(tot.dens.mod))
+
+# posthoc just looking at time point, a trend
+tot.dens.ph<-emmeans(tot.dens.mod, pairwise~time_point)
+multcomp::cld(tot.dens.ph, Letters=letters)
+
+stepAIC(lm(dens.row.sums ~ latitude + longitude + DO..perc + DOC + chla_ug.L + pH + cond + temp..C, data = counts)) 
+tot.zoop.dens.mod<-lm(dens.row.sums ~ temp..C, data = counts)
+tot.zoop.dens.aov<-Anova(tot.zoop.dens.mod, type=2)
+plot(allEffects(shan.zoop.mod))
+
+
+
+
+##### Daphnia
+daphnia.dens.plot <- ggplot(counts, aes(x = date.simple, y = daphnia.dens, color = lake, group = lake)) +
+  geom_point(size = 2) + 
+  geom_line() + 
+  labs( x = "Sampling Time Point", y = "Daphnia Density (#/L)") +
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# model
+daph.dens.mod<-lm(daphnia.dens ~ time_point + lake, data = counts)
+daph.dens.aov<-Anova(daph.dens.mod, type=2) #time point trend
+hist(residuals(daph.dens.mod))
+plot(allEffects(daph.dens.mod))
+
+# posthoc just looking at time point, a trend
+daph.dens.ph<-emmeans(daph.dens.mod, pairwise~time_point)
+multcomp::cld(daph.dens.ph, Letters=letters)
+
+
+##### Calanoid
+calanoid.dens.plot <- ggplot(counts, aes(x = date.simple, y = cal.dens, color = lake, group = lake)) +
+  geom_point(size = 2) + 
+  geom_line() + 
+  labs( x = "Sampling Time Point", y = "Calanoid Density (#/L)") +
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# model
+calan.dens.mod<-lm(cal.dens ~ time_point + lake, data = counts)
+calan.dens.aov<-Anova(calan.dens.mod, type=2) #lake effect
+hist(residuals(calan.dens.mod))
+plot(allEffects(calan.dens.mod))
+
+# posthoc just looking at time point, a trend
+calan.dens.ph<-emmeans(calan.dens.mod, pairwise~lake)
+multcomp::cld(calan.dens.ph, Letters=letters)
+
+
+#### Cyclopoid
+cyclopoid.dens.plot <- ggplot(counts, aes(x = date.simple, y = cyc.dens, color = lake, group = lake)) +
+  geom_point(size = 2) + 
+  geom_line() + 
+  labs( x = "Sampling Point", y = "Cyclopoid Density (#/L)") +
+   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# model
+cyclo.dens.mod<-lm(cyc.dens ~ time_point + lake, data = counts) # time_point
+cyclo.dens.aov<-Anova(cyclo.dens.mod, type=2)
+hist(residuals(cyclo.dens.mod))
+plot(allEffects(cyclo.dens.mod))
+
+# posthoc just looking at time point
+cyclo.dens.ph<-emmeans(cyclo.dens.mod, pairwise~time_point)
+multcomp::cld(cyclo.dens.ph, Letters=letters)
+
+
+#### nauplii
+nauplii.dens.plot <- ggplot(counts, aes(x = date.simple, y = nau.dens, color = lake, group = lake)) +
+  geom_point(size = 2) + 
+  geom_line() + 
+  labs( x = "Sampling Point", y = "Nauplii Density (#/L)") +
+   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# model
+nau.dens.mod<-lm(nau.dens ~ time_point + lake, data = counts)
+nau.dens.aov<-Anova(nau.dens.mod, type=2) #time point signif
+hist(residuals(nau.dens.mod))
+plot(allEffects(nau.dens.mod))
+
+# posthoc just looking at time point
+nau.dens.ph<-emmeans(nau.dens.mod, pairwise~time_point)
+multcomp::cld(nau.dens.ph, Letters=letters)
+
+
+##### asplanchna
+asplanchna.dens.plot <- ggplot(counts, aes(x = date.simple, y = asp.dens, color = lake, group = lake)) +
+  geom_point(size = 2) + 
+  geom_line() + 
+  labs( x = "Sampling Time Point", y = "Asplanchna Density (#/L)") +
+   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+# model
+asp.dens.mod<-lm(log(asp.dens+0.001) ~ time_point + lake, data = counts)
+asp.dens.aov<-Anova(asp.dens.mod, type=2) #time point trend, lake signif
+hist(residuals(asp.dens.mod))
+plot(allEffects(asp.dens.mod))
+
+# posthoc just looking at time point, a trend
+asp.dens.ph<-emmeans(asp.dens.mod, pairwise~lake)
+multcomp::cld(asp.dens.ph, Letters=letters)
+
+
+####### ####### ####### 
+####### less common groups
+
+#### Ceriodaphnia
+ceriodaphnia <- ggplot(counts, aes(x = date.simple, y = cerio.dens, color = lake, group = lake)) +
+  geom_point(size=2) + 
+  geom_line()+
+   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+ceriodaphnia
+
+# model
+ceri.dens.mod<-lm(cerio.dens ~ time_point + lake, data = counts)
+ceri.dens.aov<-Anova(ceri.dens.mod, type=2) #lake signif
+plot(allEffects(ceri.dens.mod))
+
+# posthoc just looking at time point
+ceri.dens.ph<-emmeans(ceri.dens.mod, pairwise~lake)
+multcomp::cld(ceri.dens.ph, Letters=letters)
+
+
+###### bosmina
+bosmina.dens.plot <- ggplot(counts, aes(x = date.simple, y = bos.dens, color = lake, group = lake)) +
+  geom_point(size=2) + 
+  geom_line() +
+   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+Anova(lm(bos.dens ~ time_point + lake, data = counts)) # no effect
+
+
+###### kellicotia
+kellicotia.dens.plot <- ggplot(counts, aes(x = date.simple, y = kell.dens, color = lake, group = lake)) +
+  geom_point(size=2) + 
+  geom_line() +
+   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+Anova(lm(kell.dens ~ time_point + lake, data = counts)) # no effect
+
+
+##### keratella
+keratella.dens.plot <- ggplot(counts, aes(x = date.simple, y = ker.dens, color = lake, group = lake)) +
+  geom_point(size=2) + 
+  geom_line() +
+   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+keratella
+
+Anova(lm(ker.dens ~ time_point + lake, data = counts)) # no effect
+
+
+#### holopedium
+holopedium.dens.plot <- ggplot(counts, aes(x = date.simple, y = holo.dens, color = lake, group = lake)) +
+  geom_point(size=2) + 
+  geom_line() +
+   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+Anova(lm(holo.dens ~ time_point + lake, data = counts)) # not enough species frequency
+
+
+#### polyphemus
+polyphemus.dens.plot <- ggplot(counts, aes(x = date.simple, y = poly.dens, color = lake, group = lake)) +
+  geom_point(size=2) + geom_line() +
+   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+Anova(lm(poly.dens ~ time_point + lake, data = counts)) # no effect
+
+
+#### chydorus
+chydorus.dens.plot <- ggplot(counts, aes(x = date.simple, y = chy.dens, color = lake, group = lake)) +
+  geom_point(size=2) + geom_line() +
+  scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
+  theme_classic()
+
+Anova(lm(chy.dens ~ time_point + lake, data = counts)) # no effect
+
+
+####### make aggregated plot
+combined.dens.plot <- ggarrange(
+                           overall.dens.plot + theme(axis.title.y =element_text(size=8))+ guides(color="none"),
+                           daphnia.dens.plot + theme(axis.title.y =element_text(size=8))+ guides(color="none"),
+                           calanoid.dens.plot + theme(axis.title.y=element_text(size=8))+ guides(color="none"),
+                           cyclopoid.dens.plot + theme(axis.title.y=element_text(size=8))+ guides(color="none"),
+                           nauplii.dens.plot + theme(axis.title.y=element_text(size=8))+ guides(color="none"),
+                           asplanchna.dens.plot + theme(axis.title.y=element_text(size=8))+ guides(color="none"),
+                           labels = c("A", "B", "C", "D", "E", "F"), nrow = 2, ncol = 3)
+                           #common.legend = TRUE, legend="right",
+                           #align="hv", font.label = list(size=10, color="black", family=NULL, position = "top"))
+combined.dens.plot
+dev.print(pdf, "figures/FigS3.combined.dens.plot.pdf", height=7, width=8)
+dev.off()
+
+```
+
+- area stacked bar plot
+```{r stacked bar plot}
+long_counts <- tidyr::pivot_longer(data = counts, cols = c(22:33), 
+                                   names_to = "Taxa", values_to= "Density")
+long_counts <- as.data.frame(long_counts)
+str(long_counts)
+long_counts$Taxa<-as.factor(long_counts$Taxa)
+long_counts$Rel.abund <- long_counts$Density/ long_counts$dens.row.sums
+
+is.na(long_counts)<-sapply(long_counts, is.infinite)
+long_counts[is.na(long_counts)]<-0
+
+# try with just logging the densities ("value"), still an issue of zeros but let's just look
+mod2<-lm(log(Density+0.001) ~Taxa+time_point*lake, data = long_counts)
+Anova(mod2, type=3)
+
+long_counts$Time.cont<-as.numeric(long_counts$time_point)
+
+# area plot
+zoop_abundances_area <- ggplot(long_counts, aes(x=Time.cont, y=Rel.abund, fill=Taxa)) +
+  geom_area() +
+  facet_grid(cols = vars(lake)) +
+  xlab("Sampling Time Point") +ylab("Relative Abundance")  +
+  scale_fill_manual(values = c("firebrick3", "lightsalmon", "gold", "darkorange", "darkseagreen2", "mediumseagreen","lightskyblue","plum", "royalblue3", "palegoldenrod", "tan", "gray54")) + theme_bw()
+ 
+zoop_abundances_area
+dev.copy(pdf, "figures/Fig3.zoop_abundances_areaplot.pdf", height=6, width=15)
+dev.off()
+
+```
+
+- zooplankton shannon stats
+```{r stats on zoops}
+# Shannon diversity
+zoop.comm.div <- as.data.frame(vegan::diversity(counts[,c(22:33)], index="shannon"))
+zoop.comm.div <- cbind(counts, zoop.comm.div)
+names(zoop.comm.div)[46] <- "Shannon"
+
+zoop.shan.mod<-lm(Shannon ~ time_point + lake, data = zoop.comm.div)
+zoop.shan.aov<-Anova(zoop.shan.mod, type=2)
+# no effect of time or lake on Shannon diversity of zoop community samples (p> 0.425)
+
+stepAIC(lm(Shannon ~ latitude + longitude + DO..perc + DOC + chla_ug.L + pH + cond + temp..C, data = zoop.comm.div)) 
+shan.zoop.mod<-lm(Shannon ~ latitude + cond + temp..C, data = zoop.comm.div)
+shan.zoop.aov<-Anova(shan.zoop.mod, type=2)
+plot(allEffects(shan.zoop.mod))
+
+#ggscatter(zoop.comm.div, x = "temp..C", y = "Shannon",
+#          add = "reg.line", conf.int = TRUE,  xlim =c(12,22), ylim=c(0.5,2.5),
+#          cor.coef = TRUE, cor.method = "pearson", cor.coef.coord = c(12.5,2.4),
+#          xlab = "Temperature", ylab = "Zooplankton Community Shannon Diversity")
+
+```
+
+
+### Microbiome Data 
+- Import Phyloseq
+- Modify the metadata to meet downstream needs
 ```{r loading in data and modifying metadata}
 ##########################################################
 detach("package:MicrobiotaProcess", TRUE) # reload later, has conflicts with phyloseq
@@ -47,20 +581,21 @@ detach("package:MicrobiotaProcess", TRUE) # reload later, has conflicts with phy
 # ps.prune is the final phyloseq object from pipeline, can load it in here...
 ### or load in the raw data and re-assemble
 
-ps.prune.LOCAL<-readRDS("output/reanalysis/ps.prune_local.RDS") #7141 taxa of 328 samples
+ps.prune.LOCAL<-readRDS("output/reanalysis/ps.prune_local.RDS") #8056 taxa of 328 samples
 
 # idiot check: make sure to remove all mitochondria and chloroplast taxonomic IDs
 ps.prune.LOCAL <- subset_taxa(ps.prune.LOCAL, Family!= "Mitochondria" | 
                         is.na(Family) & Class!="Chloroplast" | is.na(Class))
 
-# chloroplasts sneaking in under Order in some cyanobacteria, looks good @ 7141 ASVs
-ps.prune.LOCAL <- subset_taxa(ps.prune.LOCAL, Order!="Chloroplast")
+# chloroplasts sneaking in under Order in some cyanobacteria, looks good @ 8056 ASVs
+ps.prune.LOCAL <- subset_taxa(ps.prune.LOCAL, Order!="Chloroplast"| is.na(Class))
 
 # make sure any ASVs in the data that not in > 1 sample, removed
 ps.prune.LOCAL <- prune_taxa(taxa_sums(ps.prune.LOCAL) > 1, ps.prune.LOCAL) 
-# few sneaked in, @ 7133 ASVs in 328 samples
+# few sneaked in, @ 8040 ASVs in 328 samples
+# summarize_phyloseq(ps.prune.LOCAL) <<< use this for reporting
 
-# order the lakes by North to South,  in phyloseq 
+# order the lakes by North to South or upstream in phyloseq 
 sample_data(ps.prune.LOCAL)$Lake <- factor(sample_data(ps.prune.LOCAL)$Lake, levels = 
                                            c("Cooney", "Blue", "Virginia", "Convict", "Serene", "Eastern Brook"))
 
@@ -206,6 +741,11 @@ env.metad<- env.metad %>%
   dplyr::select(sample_ID, sequencing_ID, sampleNames, sample_type, organism, Number.of.Organism, 
                 time_point, lake, elevation_m, temp_C, chla_ug.L, pH, DO_perc, spc, cond, DOC, TDN, TDP)
 
+## replace outliers in nutrient analysis
+env.metad<-env.metad %>% 
+  naniar::replace_with_na(replace = list(TDP = 4102.48))
+
+
 ################################## ##################################
 # no merge, subset to make it easier to merge...
 env.metad.reduce<-env.metad %>%
@@ -233,7 +773,7 @@ table(sample_data(PS.fin)$sample_type) #328 samples: 30 water, 298 zooplankton
 sample_data(PS.fin)$organism<-factor(sample_data(PS.fin)$organism, levels =c("Daphnia", "Holopedium", 
                                    "Calanoid", "Cyclopoid", "Water", "Bosmina", "Ceriodaphnia")) # back to factor
 
-table(tax_table(PS.fin)[, "Kingdom"], exclude = NULL) # 304 Archaea, 8197 Bacteria
+table(tax_table(PS.fin)[, "Kingdom"], exclude = NULL) # 289 Archaea, 7751 Bacteria
 summarize_phyloseq(PS.fin)
 
 ########### ########### ########### ########### 
@@ -269,18 +809,14 @@ Inspect the run: what is the # of reads/sample? A bit over inflated due to water
 #### inspect plots
 
 # reads per sample
-pdf(file="figures/reads.sample.pdf", height=4, width=7)
-ggplot(MetaD.SQ.Env, aes(x=sample_type, y=read.sum, color=organism)) + geom_boxplot() + theme_bw() +
+read.sample<-ggplot(MetaD.SQ.Env, aes(x=sample_type, y=read.sum, color=organism)) + geom_boxplot() + theme_bw() +
   scale_color_manual(values=c("coral2", "gold3", "mediumaquamarine", "springgreen4", 
                               "dodgerblue", "violet", "wheat3"))
-dev.off() 
 
 ### log reads per sample
-pdf(file="figures/log.reads.sample.pdf", height=4, width=12)
-ggplot(MetaD.SQ.Env, aes(x=organism, y=log(read.sum), color=organism)) + geom_boxplot() + theme_bw() +
+log.read.sample<-ggplot(MetaD.SQ.Env, aes(x=organism, y=log(read.sum), color=organism)) + geom_boxplot() + theme_bw() +
   scale_color_manual(values=c("coral2", "gold3", "mediumaquamarine", "springgreen4", 
                               "dodgerblue", "violet", "wheat3"))
-dev.off() 
 
 # read depth a bit low for zooplankton vs water, average depth is less than 2000 reads
 ggplot(MetaD.SQ.Env[(MetaD.SQ.Env$sample_type=="Zooplankton"),], aes(x=sample_type, y=read.sum, color=organism)) +
@@ -290,11 +826,11 @@ ggplot(MetaD.SQ.Env[(MetaD.SQ.Env$sample_type=="Zooplankton"),], aes(x=sample_ty
 ```
 
 Now look at read depth and rarefaction curves to determine how to standardize sampling depth
-```{r Read depth plots and rarefaction curves}
+```{r Read depth plots and rarefaction curves, eval=FALSE}
 
 # Histogram of sample read counts
 hist.depth <- ggplot(MetaD.SQ.Env, aes(read.sum)) + 
-  geom_histogram(color="gold4", fill= "gold2", binwidth = 10000) + 
+  geom_histogram(color="gold4", fill= "goldenrod2", binwidth = 10000) + 
   xlab("Read counts") +
   ggtitle("Sequencing Depth") + theme_classic()
 
@@ -307,16 +843,12 @@ read_depth_violin <- ggplot(MetaD.SQ.Env, aes(x=1, y=read.sum)) +
   geom_violin() + ggtitle("Distribution of sample sequencing depth") + scale_y_log10() +
   xlab("Samples") + ylab("Read Depth") + geom_boxplot(width=0.1)
 
-read_depth_violin
-dev.copy(pdf, "figures/read_depth_violin.pdf", height=4, width=5)
-dev.off()
-
 # Rarefaction curve
 count_table_filt <- as.data.frame(otu_table(PS.fin))
-rarecurve((count_table_filt), step=50, cex=0.5, xlim=c(0,100000), ylab = "ASVs", label=FALSE)
+rarecurve((count_table_filt), step=50, cex=0.5, xlim=c(0,100000), ylab = "ASVs", label=FALSE, col="gold4")
 #abline(v = 500, lty = "dotted", col="red", lwd=2)
 
-dev.copy(pdf, "figures/rare.raw.pdf", height=4, width=8)
+dev.copy(pdf, "figures/FigS2.rare.raw.pdf", height=4.5, width=7)
 dev.off() 
 ```
 
@@ -392,8 +924,8 @@ Hell.tb.RDA<- plot_ordination(
   physeq=PS.rar.hell.test, 
   ordination = ord.hell.RDA) +
   geom_point(aes(color = organism), size = 2) +    
-  scale_color_manual(values=c("coral", "gold3", "mediumaquamarine", "olivedrab3", 
-                              "steelblue1", "violet", "wheat3")) +
+  scale_color_manual(values=c("coral", "goldenrod2", "darkolivegreen3", "darkslategray4",
+                              "dodgerblue", "violet", "wheat3")) +
   stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
   ggtitle("ALL taxa: tb-RDA (Hell-500)") +
   theme_classic() 
@@ -408,8 +940,8 @@ Rare.culling<-plot_ordination(PS.fin, PCoA.full, color = "organism") +
   geom_point(aes(shape = read.sum > 500, size= read.sum > 500)) +
   scale_size_manual(values= c(6,2)) +
   scale_shape_manual(values=c(1, 16))+
-  scale_color_manual(values=c("coral", "gold3", "mediumaquamarine", "olivedrab3", 
-                              "steelblue1", "violet", "wheat3")) +
+  scale_color_manual(values=c("coral", "goldenrod2", "darkolivegreen3", "darkslategray4",
+                              "dodgerblue", "violet", "wheat3")) +
   ggtitle("Samples culled by rarefaction") + theme_classic()
 
 
@@ -419,8 +951,8 @@ Non.rar.PCoA<-plot_ordination(
   ordination = PCoA.full) +                                                
   geom_point(aes(color = organism), size = 2) +    
   stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
-  scale_color_manual(values=c("coral", "gold3", "mediumaquamarine", "olivedrab3", 
-                              "steelblue1", "violet", "wheat3")) +
+  scale_color_manual(values=c("coral", "goldenrod2", "darkolivegreen3", "darkslategray4", 
+                              "dodgerblue", "violet", "wheat3")) +
   ggtitle("ALL taxa-all data") +
   theme_classic() 
 
@@ -433,8 +965,8 @@ Rar.PCoA<- plot_ordination(
   ordination = ord.rar) +                                                
   geom_point(aes(color = organism), size = 2) +    
   stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
-  scale_color_manual(values=c("coral", "gold3", "mediumaquamarine", "olivedrab3", 
-                              "steelblue1", "violet", "wheat3")) +
+  scale_color_manual(values=c("coral", "goldenrod2","darkolivegreen3", "darkslategray4",
+                              "dodgerblue", "violet", "wheat3")) +
   ggtitle("ALL taxa- 500reads") +
   theme_classic() 
 
@@ -453,26 +985,48 @@ random_tree = rtree(ntaxa(PS.rar), rooted=TRUE, tip.label=taxa_names(PS.rar))
 # add in
 phy_tree(PS.rar)<-random_tree
 
-# we will use unweighted since we have low abundance taxa
+# unweighted since we have low abundance taxa
 ord.unif <- ordinate(PS.rar, method = 'PCoA', distance ="unifrac")
 
-PCoA.rar.unw.unif<- plot_ordination(
+PCoA.rar.UnW.unif<- plot_ordination(
   physeq=PS.rar, 
   ordination = ord.unif) +
   geom_point(aes(color = organism), size = 2) +    
   stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
-  scale_color_manual(values=c("coral", "gold3", "mediumaquamarine", "olivedrab3", 
-                              "steelblue1", "violet", "wheat3")) +
-  ggtitle("ALL taxa: PCoA 500.unw.unifrac") +
+  scale_color_manual(values=c("coral", "goldenrod2", "darkolivegreen3", "darkslategray4",
+                              "dodgerblue", "violet", "wheat3")) +
+  ggtitle("ALL taxa: PCoA 500.UnW.unifrac") +
   theme_classic() 
+
+# weighted for dominant taxa
+ord.wunif <- ordinate(PS.rar, method = 'PCoA', distance ="wunifrac")
+
+PCoA.rar.w.unif<- plot_ordination(
+  physeq=PS.rar, 
+  ordination = ord.wunif) +
+  geom_point(aes(color = organism), size = 2) +    
+  stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
+  scale_color_manual(values=c("coral", "goldenrod2", "darkolivegreen3", "darkslategray4", 
+                              "dodgerblue", "violet", "wheat3")) +
+  ggtitle("ALL taxa: PCoA 500.W.unifrac") +
+  theme_classic() 
+
+## inspect sample size effects for samples with more or less than average # individuals
+Rare.number.org<-plot_ordination(PS.fin, PCoA.full, color = "Number.of.Organism") +
+  geom_point(aes(color= Number.of.Organism, shape=organism), size=2) +
+  scale_colour_gradient(low = "gold", high = "dodgerblue") +
+  scale_shape_manual(values=c(16,17,18,1,2,3,4))+
+  ggtitle("Organism number rarefaction") + theme_classic() 
+Rare.number.org$layers <- Rare.number.org$layers[-1]
 
 
 ####
 ordination.tests<-plot_grid(Rare.culling + guides(color="none"), 
                       Non.rar.PCoA +  guides(color="none"), 
                       Rar.PCoA,   
-                      PCoA.rar.unw.unif +  guides(color="none"),
-                      Hell.tb.RDA + guides(color="none"), ncol=3, rel_widths=c(4,4,5,4,4,4))
+                      Rare.number.org,
+                      PCoA.rar.w.unif +  guides(color="none"),
+                      Hell.tb.RDA + guides(color="none"), ncol=3, rel_widths=c(5,4,4,5,4,4))
 
 ordination.tests
 dev.copy(pdf, "figures/Ordination.tests.pdf", height=10, width=15)
@@ -535,6 +1089,10 @@ write.csv(OTUdf.rar, "output/OTUdf.rar.csv")
 write.csv(TAXdf.rar, "output/TAXdf.rar.csv")
 write.csv(SAMdf.rar, "output/SAMdf.rar.csv")
 
+########### ########### ########### ########### 
+saveRDS(PS.500, "output/reanalysis/PS.500.RDS") # save phyloseq
+########### ########### ########### ########### 
+
 
 # pull the OTU table and sample data from phyloseq so we can run these analyses in vegan
 # if needed, this is quite useful....
@@ -555,93 +1113,8 @@ psotu2veg <- function(physeq) {
 }
 ```
 
-For ordination use PCoA [rarifed data, db-Bray Curtis], compare with unweighted unifrac [rarified with phylogenetic info]
-- perform PCoA on all samples
-- perform PCoA on rarified 500 reads 
-- perform PCoA on rarified-hellinger transformed
-```{r PCoA and Unifrac final}
-
-###### check the # of samples in each taxa
-table(sample_data(PS.500)$organism)
-table(sample_data(PS.500)$sample_type) 
-#284 samples: 28 water, 253 zooplankton 
-
-# rarefied non-transformed
-set.seed(341)
-ord.500<- ordinate(PS.500, method = 'PCoA', distance ="bray")
-
-#########
-#PCoA Bray
-PCoA.rar.bray<- plot_ordination(
-  physeq=PS.500, 
-  ordination = ord.500) +
-  geom_point(aes(color = organism, shape=sample_type), size = 1.5) +
-  stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
-  scale_color_manual(values=c("coral2", "gold3", "darkseagreen", "darkslategray4", "steelblue2")) +
-  scale_shape_manual(values= c(1,16))+
-  ggtitle("ALL taxa-500 Bray") +
-  theme_classic()
-PCoA.rar.bray$layers <- PCoA.rar.bray$layers[-1]
-
-library("colorBlindness")
-cvdPlot(PCoA.rar.W.unif) # see that the pallete is colorblind friendly
-
-
-####### 
-# make phylogenetic tree and add to phyloseq if wanting to do unifrac weight/unweighted
-set.seed(341)
-random_tree = rtree(ntaxa(PS.500), rooted=TRUE, tip.label=taxa_names(PS.500))
-
-# add in, use unweighted since we have low abundance taxa
-phy_tree(PS.500)<-random_tree
-
-set.seed(341)
-ord.unif <- ordinate(PS.500, method = 'PCoA', distance ="unifrac")
-
-PCoA.rar.unw.unif<- plot_ordination(
-  physeq=PS.500, 
-  ordination = ord.unif) +
-  geom_point(aes(color = organism, shape=sample_type), size = 1.5) +    
-  stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
-  scale_color_manual(values=c("coral2", "gold3", "darkseagreen", "darkslategray4", "steelblue2")) +
-  scale_shape_manual(values= c(1,16))+
-  ggtitle("ALL taxa: PCoA 500.unw.unifrac") +
-  theme_classic() 
-PCoA.rar.unw.unif$layers <- PCoA.rar.unw.unif$layers[-1]
-
-# for comparison , see weighted unifrac
-set.seed(341)
-ord.Wunif <- ordinate(PS.500, method = 'PCoA', distance ="wunifrac")
-
-PCoA.rar.W.unif<- plot_ordination(
-  physeq=PS.500, 
-  ordination = ord.Wunif) +
-  geom_point(aes(color = organism, shape=sample_type), size = 1.5) +    
-  stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
-  scale_color_manual(values=c("coral2", "gold3", "darkseagreen", "darkslategray4", "steelblue2")) +
-  scale_shape_manual(values= c(1,16))+
-  ggtitle("ALL taxa: PCoA 500.W.unifrac") +
-  theme_classic() 
-PCoA.rar.W.unif$layers <- PCoA.rar.W.unif$layers[-1]
-
-
-#########
-extract.legend.PCoA <- get_legend(
-  # create some space to the left of the legend
-  PCoA.rar.W.unif + theme(legend.box.margin = margin(0, 0, 0, 10)))
-
-# make combined plot
-PCoA.and.Unifracs<-plot_grid(PCoA.rar.bray +  guides(color="none", shape="none"),
-                            PCoA.rar.unw.unif +  guides(color="none",  shape="none"), 
-                            PCoA.rar.W.unif + guides(color="none",  shape="none"), extract.legend.PCoA, ncol=4, rel_widths=c(5,5,5,2))
-
-PCoA.and.Unifracs
-dev.copy(pdf, "figures/PCoA.Unifrac.pdf", height=4, width=12)
-dev.off()
-```
-
-Here is the map of sampling locations
-```{r map}
+Here is the map of sampling locations. Don't run this, Maddy made a new map
+```{r map, eval=FALSE}
 gps <- as.data.frame(cbind(unique(sample_data(PS.500)$longitude), unique(sample_data(PS.500)$latitude)))
 rownames(gps) <- unique(sample_data(PS.500)$lake)
 
@@ -732,7 +1205,7 @@ richness.plot.samples <- plot_richness(PS.500, x="sample_type", measures=c("Obse
   geom_boxplot(aes(fill=sample_type), alpha=0.7) +
   geom_point(aes(color=sample_type), alpha=0.5) +
   scale_color_manual(values = c("lightsteelblue3", "navajowhite3"))+ guides(color="none") +
-  scale_fill_manual(values = c("lightsteelblue2", "navajowhite2"))+ guides(fill="none") +
+  scale_fill_manual(values = c("lightsteelblue3", "navajowhite2"))+ guides(fill="none") +
   theme(axis.text.x=element_text(size=9)) + theme(strip.text.x = element_text(size = 12))
 
 richness.plot.samples$layers <- richness.plot.samples$layers[-1] # remove the first layer of points 
@@ -773,8 +1246,8 @@ richness.spp.shan <- plot_richness(PS.500, x="organism", color="organism", measu
   coord_cartesian(ylim=c(0, 5))+
   geom_boxplot(aes(fill=organism), alpha=0.4) + guides(fill="none") + guides(color="none")+
   geom_point(alpha=0.5) +
-  scale_fill_manual(values=c("coral2", "gold3", "darkseagreen", "darkslategray4", "steelblue2")) +
-  scale_color_manual(values=c("coral2", "gold3", "darkseagreen", "darkslategray4", "steelblue2")) +
+  scale_fill_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  scale_color_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
   theme(axis.text.x=element_blank(), strip.text.x = element_text(size = 12)) + theme_bw() +
   theme(axis.text.x = element_text(angle = 20, vjust = 0.5, hjust=1))
 
@@ -788,8 +1261,8 @@ richness.spp.obs <- plot_richness(PS.500, x="organism", color="organism", measur
   coord_cartesian(ylim=c(0, 150))+
   geom_boxplot(aes(fill=organism), alpha=0.4) + guides(fill="none") + guides(color="none")+
   geom_point(alpha=0.5) +
-  scale_fill_manual(values=c("coral2", "gold3", "darkseagreen", "darkslategray4", "steelblue2")) +
-  scale_color_manual(values=c("coral2", "gold3", "darkseagreen", "darkslategray4", "steelblue2")) +
+  scale_fill_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  scale_color_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
   theme(axis.text.x=element_blank(), strip.text.x = element_text(size = 12)) + theme_bw()+
    theme(axis.text.x = element_text(angle = 20, vjust = 0.5, hjust=1))
 
@@ -797,52 +1270,50 @@ richness.spp.obs$layers <- richness.spp.obs$layers[-1] # remove the first layer 
 richness.spp.obs
 
 
-# combine all richness
-Fig.4.rich.plot<-plot_grid(alpha.time.lake, richness.spp.shan, richness.spp.obs,
-                      ncol=3, rel_widths=c(12,6,6))
-Fig.4.rich.plot
-dev.copy(pdf, "figures/Fig.4.rich.plot.pdf", height=6, width=12)
+#richness by organisms (zoop species and water)
+#Shannon
+richness.spp.time.shan <- plot_richness(PS.500, x="time_point", color="organism", measures=c("Shannon")) +
+  labs(y= "Alpha Diversity", x = "Sampling Time Points") + 
+  coord_cartesian(ylim=c(0, 5))+
+  geom_boxplot(aes(fill=organism), alpha=0.4, outlier.size=0.8) + guides(fill="none") + guides(color="none")+
+  geom_point(alpha=0.5, size=0.8, position=position_dodge(width = 0.75)) +
+  scale_fill_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  scale_color_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  theme(axis.text.x=element_blank(), strip.text.x = element_text(size = 12)) + theme_bw() +
+  theme(axis.text.x = element_text(angle = 20, vjust = 0.5, hjust=1))
+
+richness.spp.time.shan$layers <- richness.spp.time.shan$layers[-1] # remove the first layer of points 
+richness.spp.time.shan
+
+
+#richness by organisms (zoop species and water)
+#observed
+richness.spp.lake.shan <- plot_richness(PS.500, x="lake", color="organism", measures=c("Shannon")) +
+  labs(y= "Alpha Diversity", x = "Lakes") + 
+  coord_cartesian(ylim=c(0, 5))+
+  geom_boxplot(aes(fill=organism), alpha=0.4, outlier.size=0.8) + guides(fill="none") + guides(color="none")+
+  geom_point(alpha=0.5, size=0.8, position=position_dodge(width = 0.75)) +
+  scale_fill_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  scale_color_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  theme(axis.text.x=element_blank(), strip.text.x = element_text(size = 12)) + theme_bw()+
+   theme(axis.text.x = element_text(angle = 20, vjust = 0.5, hjust=1))
+
+richness.spp.lake.shan$layers <- richness.spp.lake.shan$layers[-1] # remove the first layer of points 
+richness.spp.lake.shan
+
+extract.legend.richness <- get_legend(
+  # create some space to the left of the legend
+  richness.spp.lake.shan + theme(legend.box.margin = margin(0, 0, 0, 10)))
+
+
+# group the above two plots
+alpha.organism.time.lake<-plot_grid(richness.spp.time.shan, 
+                                    richness.spp.lake.shan,
+                                    ncol=2, labels=c("A", "B"), rel_widths = c(5,5.2))
+
+alpha.organism.time.lake
+dev.print(pdf, "figures/Figx.shannon.interaction.pdf", width=10, height=5)
 dev.off()
-
-
-######
-# lets look at beta diversity and distance to centroid a bit: (zoop species and water)
-# using the rarefied here since beta diversity metric
-set.seed(10000)
-bc_500.bd <- phyloseq::distance(PS.500, method = "bray") # rarefied 
-bc_beta.df <- as.data.frame(sample_data(PS.500))
-
-# one approach
-bd<-betadisper(bc_500.bd, bc_beta.df$organism, type="centroid")
-permutest(bd, permutations = 99)
-anova(bd)
-plot(bd)
-boxplot(bd)
-TukeyHSD(bd)
-plot(TukeyHSD(bd))
-plot(bd, axes = c(1,3), seg.col = "black", seg.lty = "dashed")
-
-
-plot(bd, ellipse = TRUE, hull = FALSE, label.cex = 0.4, main="Distance to Centroids")
-dev.copy(pdf, "figures/bc_beta.df.pdf", height=6, width=6)
-dev.off()
-
-sqrt(dist(bd$centroids[,bd$eig>0])^2 - dist(bd$centroids[,bd$eig<0]^2))
-
-#
-bd$group.distances # this is Average distance to centroid for each group
-scores(bd, 1:2, display = "centroids") # this is the centroid for each group
-bd.df <- data.frame(Distance_to_centroid = bd$distances, organism=bd$group) # dataframe
-
-betadisp.org.plot<- ggplot(data=bd.df, aes(x=organism, y=Distance_to_centroid, color=organism)) +
-  geom_boxplot(aes(fill=organism), alpha=0.2) + guides(fill="none") +
-  geom_point(alpha=0.5) + 
-  ylim(0,0.8) +
-  guides(color=guide_legend(title=""))+ xlab("Sample Type")+ ylab("Distance to centroid") +
-  ggtitle("Betadispersion") +
-  scale_fill_manual(values=c("coral2", "gold3", "darkseagreen", "darkslategray4", "steelblue2")) +
-  scale_color_manual(values=c("coral2", "gold3", "darkseagreen", "darkslategray4", "steelblue2")) +
-  theme(axis.text.x=element_blank()) + theme_bw() 
 ```
 
 Use Shannon Diversity and Alpha richness to test differences across sampling factors
@@ -852,24 +1323,37 @@ Shan.rich<-estimate_richness(PS.500, measures =c("Observed", "Shannon"))
 rownames(Shan.rich) <- substr(rownames(Shan.rich),2,nchar(rownames(Shan.rich))) # to remove the "X"
 Shan.rich.df<-merge(data.frame(sample_data(PS.500)), Shan.rich, by = "row.names") # merge 
 
-#### SHANNON straight 3 way no-interaction (bc of missing samples post filtering)
-rich.shan.all<- lm(Shannon~ time_point+lake+organism, data=Shan.rich.df)
-Anova(rich.shan.all, type=2) #time*lake significant
+#### SHANNON fully orthogonal
+# full 3 way for shannon
+rich.shan.all<- lm(Shannon~ time_point*lake*organism, data=Shan.rich.df)
+Anova(rich.shan.all) #time*lake significant
 plot(allEffects(rich.shan.all))
 
+emmeans(rich.shan.all, ~time_point*lake*organism, calc = c(n = ".wgt."))
+with(Shan.rich.df, table(time_point, lake, organism))
+
+rich.test.lake.full<-emmeans(rich.shan.all, pairwise~time_point|organism)
+multcomp::cld(rich.test.lake.full, Letters=letters)
+
+#### SHANNON
+# straight 3 way no-interaction (bc of missing samples post filtering)
+rich.shan.reduced<- lm(Shannon~ time_point+lake+organism, data=Shan.rich.df)
+Anova(rich.shan.reduced, type=2) #time*lake significant
+plot(allEffects(rich.shan.reduced))
+
 #  posthoc just looking at Lake (p=<0.001)
-rich.test.lake<-emmeans(rich.shan.time.lake, pairwise~lake)
+rich.test.lake<-emmeans(rich.shan.reduced, pairwise~lake)
 multcomp::cld(rich.test.lake, Letters=letters)
 # lake          emmean    SE  df lower.CL upper.CL .group
 # Serene          1.94 0.120 274     1.70     2.17  a    
-# Eastern Brook   2.07 0.115 274     1.85     2.30  ab   
-# Virginia        2.47 0.108 274     2.26     2.69   bc  
-# Convict         2.57 0.121 274     2.33     2.81    c  
-# Cooney          2.68 0.109 274     2.47     2.89    c  
-# Blue            2.71 0.106 274     2.50     2.91    c 
+# Eastern Brook   2.07 0.115 274     1.85     2.30  a   
+# Virginia        2.47 0.108 274     2.26     2.69    b  
+# Convict         2.57 0.121 274     2.33     2.81    b  
+# Cooney          2.68 0.109 274     2.47     2.89    b  
+# Blue            2.71 0.106 274     2.50     2.91    b 
 
 
-rich.test.group<-emmeans(rich.shan.all, pairwise~organism)
+rich.test.group<-emmeans(rich.shan.reduced, pairwise~organism)
 multcomp::cld(rich.test.group, Letters=letters)
 
 #organism   emmean     SE  df lower.CL upper.CL .group
@@ -890,11 +1374,11 @@ obsrich.test.group<-emmeans(rich.obs.all, pairwise~organism)
 multcomp::cld(obsrich.test.group, Letters=letters)
 
 #organism   emmean     SE  df lower.CL upper.CL .group
-# Daphnia      32.8 1.40 267     30.0     35.5  a    
-# Calanoid     33.1 1.59 267     30.0     36.2  a    
-# Holopedium   33.2 5.06 267     23.3     43.2  ab   
-# Cyclopoid    41.4 1.66 267     38.1     44.7   b   
-# Water        99.8 2.51 267     94.8    104.7    c 
+# Holopedium   31.8 5.34 267     21.3     42.3  ab   
+# Daphnia      33.3 1.47 267     30.4     36.2  a    
+# Calanoid     37.0 1.68 267     33.7     40.3  ab   
+# Cyclopoid    41.3 1.75 267     37.8     44.7   b   
+# Water        98.5 2.64 267     93.3    103.7    c
 
 ```
 
@@ -918,15 +1402,15 @@ ggcorrplot(corr_matrix, hc.order = TRUE, type = "lower",
 a.div.mod <- lm(Shannon ~ temp_C + DOC + elevation_m + chla_ug.L + pH + DO_perc + cond, data = Shan.rich.df.env)
 a.div.AIC <- MASS::stepAIC(a.div.mod, direction = "both")
 
-# best model with AIC -160.5 ====. Shannon ~ elevation_m + DO_perc + cond, elevation
-shan.mod<-lm(Shannon ~ elevation_m + DO_perc + cond, data = Shan.rich.df.env)
+# best model with AIC -160.5 ====. Shannon ~ DOC + elevation_m + DO_perc + cond
+shan.mod<-lm(Shannon ~ DOC + elevation_m + DO_perc + cond, data = Shan.rich.df.env)
 summary(shan.mod)
 shan.aov<-Anova(shan.mod, type=2)
 plot(allEffects(shan.mod)) # shannon increases with elevation, cond, DO
 
 # elevation model and plot
 # not significant alone
-shan.elev<-anova(lm(Shannon ~ elevation_m, data = Shan.rich.df.env))
+shan.elev<-Anova(lm(Shannon ~ elevation_m, data = Shan.rich.df.env), type=2)
 
 elev.shan.plot<-ggplot(Shan.rich.df.env, aes(x=elevation_m, y=Shannon)) +
   geom_smooth(method = lm, color="gray30", alpha=0.2, fill="gray30")+
@@ -938,36 +1422,123 @@ elev.shan.plot<-ggplot(Shan.rich.df.env, aes(x=elevation_m, y=Shannon)) +
 # ggPredict(shan.mod, pred=DO_perc, modx=cond, show.point = FALSE, se=TRUE, xpos=0.5), wont work with elevation in model
 
 #DO 
-summary(lm(Shannon ~ DO_perc, data=Shan.rich.df.env)) # adjust-R2=0.105
+summary(lm(Shannon ~ DO_perc, data=Shan.rich.df.env)) # adjust-R2=0.103
+shan.DO<-Anova(lm(Shannon ~ DO_perc, data = Shan.rich.df.env), type=2)
+
 DO.shan.plot<-ggplot(Shan.rich.df, aes(x=DO_perc, y=Shannon)) +
   geom_smooth(method = lm, color="gray30", alpha=0.2, fill="gray30")+
   geom_point(color="gray20", size=1.5, alpha=0.6)+
   ylab("Shannon diversity")+
   xlab("Dissolved Oxygen (%)")+
-  theme_classic()DO.shan.plot<-ggplot(Shan.rich.df, aes(x=DO_perc, y=Shannon)) +
-  geom_smooth(method = lm, color="gray30", alpha=0.2, fill="gray30")+
-  geom_point(color="gray20", size=1.5, alpha=0.6)+
-  ylab("Shannon diversity")+
-  xlab("Dissolved Oxygen (%)")+
-  theme_classic()
+  theme_classic() +
+  annotate(geom="text", x=80, y=0.1, label="Adjusted-R2=0.103, p<0.001", size=3,
+           color="black")
 
 #cond
-summary(lm(Shannon ~ cond, data=Shan.rich.df.env)) # adjust-R2=0.076
+summary(lm(Shannon ~ cond, data=Shan.rich.df.env)) # adjust-R2=0.075
+shan.cond<-Anova(lm(Shannon ~ cond, data = Shan.rich.df.env), type=2)
+
 cond.shan.plot<-ggplot(Shan.rich.df, aes(x=cond, y=Shannon)) +
   geom_smooth(method = lm, color="gray30", alpha=0.2, fill="gray30")+
   geom_point(color="gray20", size=1.5, alpha=0.6)+
   ylab("Shannon diversity")+
   xlab("Conductivity (uS/cm)")+
-  theme_classic()
+  theme_classic() +
+  annotate(geom="text", x=125, y=0.1, label="Adjusted-R2=0.075, p<0.001", size=3,
+           color="black")
  
 multregres.plots.shannon.env<-plot_grid(DO.shan.plot, cond.shan.plot,
-                            ncol=2, nrow=1)
-multregres.plots.shannon.env
-dev.copy(pdf, "figures/Figx.Multregrss_BW.pdf", height=3.5, width=11)
-dev.off()
+                            ncol=2, nrow=1, labels=c("A", "B"))
 
 # summary By for median, mean, and standard error of the Shannon diversity by lake
-lake_div <- summaryBy(Shannon ~ lake, data = Shan.rich.df, FUN = c(median, mean, se))
+lake_div <- summaryBy(Shannon ~ lake, data = Shan.rich.df, FUN = c(median, mean, sd))
+```
+
+For ordination use PCoA [rarifed data, db-Bray Curtis], compare with unweighted unifrac [rarified with phylogenetic info]
+- perform PCoA on all samples
+- perform PCoA on rarified 500 reads 
+- perform PCoA on rarified-hellinger transformed
+```{r PCoA and W-Unifrac final}
+
+###### check the # of samples in each taxa
+table(sample_data(PS.500)$organism)
+table(sample_data(PS.500)$sample_type) 
+#284 samples: 28 water, 253 zooplankton 
+
+# rarefied non-transformed
+set.seed(341)
+ord.500<- ordinate(PS.500, method = 'PCoA', distance ="bray")
+
+#########
+#PCoA Bray
+PCoA.rar.bray<- plot_ordination(
+  physeq=PS.500, 
+  ordination = ord.500) +
+  geom_point(aes(color = organism, shape=sample_type), size = 1.5) +
+  stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
+  scale_color_manual(values=c("coral2", "goldenrod2", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  scale_shape_manual(values= c(1,16))+
+  ggtitle("Bray-Curtis") +
+  theme_classic()
+PCoA.rar.bray$layers <- PCoA.rar.bray$layers[-1]
+
+library("colorBlindness")
+cvdPlot(PCoA.rar.bray) # see that the pallete is colorblind friendly
+
+
+####### 
+# make phylogenetic tree and add to phyloseq if wanting to do unifrac weight/unweighted
+set.seed(341)
+random_tree = rtree(ntaxa(PS.500), rooted=TRUE, tip.label=taxa_names(PS.500))
+
+# add in, use unweighted since we have low abundance taxa
+phy_tree(PS.500)<-random_tree
+
+set.seed(341)
+ord.unif <- ordinate(PS.500, method = 'PCoA', distance ="unifrac") # unweighted
+
+PCoA.rar.unw.unif<- plot_ordination(
+  physeq=PS.500, 
+  ordination = ord.unif) +
+  geom_point(aes(color = organism, shape=sample_type), size = 1.5) +    
+  stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
+  scale_color_manual(values=c("coral2", "goldenrod2", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  scale_shape_manual(values= c(1,16))+
+  ggtitle("Unweighted Unifrac") +
+  theme_classic() 
+PCoA.rar.unw.unif$layers <- PCoA.rar.unw.unif$layers[-1]
+
+
+##### for comparison , see weighted unifrac
+set.seed(341)
+ord.Wunif <- ordinate(PS.500, method = 'PCoA', distance ="wunifrac")
+
+PCoA.rar.W.unif<- plot_ordination(
+  physeq=PS.500, 
+  ordination = ord.Wunif) +
+  geom_point(aes(color = organism, shape=sample_type), size = 1.5) +    
+  stat_ellipse(level=0.95, linetype = 2, aes(color=organism)) +
+  scale_color_manual(values=c("coral2", "goldenrod2", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  scale_shape_manual(values= c(1,16))+
+  ggtitle("Weighted Unifrac") +
+  theme_classic() 
+PCoA.rar.W.unif$layers <- PCoA.rar.W.unif$layers[-1]
+
+
+#########
+extract.legend.PCoA <- get_legend(
+  # create some space to the left of the legend
+  PCoA.rar.W.unif + theme(legend.box.margin = margin(0, 0, 0, 10)))
+
+# make combined plot
+PCoA.and.Unifracs<-plot_grid(PCoA.rar.bray +  guides(color="none", shape="none"),
+                            PCoA.rar.W.unif + guides(color="none",  shape="none"), 
+                            PCoA.rar.unw.unif +  guides(color="none",  shape="none"), extract.legend.PCoA, 
+                            ncol=4, rel_widths=c(5,5,5,2), labels = c("A","B", "C"))
+
+PCoA.and.Unifracs
+dev.copy(pdf, "figures/FigS4.PCoA.Unifrac.pdf", height=4, width=12)
+dev.off()
 ```
 
 
@@ -978,39 +1549,199 @@ Run PERMANOVA on the dissimilarity. The code here is meant to give PERMANOVA tes
 ```{r metaMDS, scores, and PERMANOVAS from BC distance matrices}
 ####################################
 # first let's look at PERMANOVA and NDMS for the full dataset
-# rarefied, hellinger
+# rarefied
 set.seed(1000)
 bc_500 <- phyloseq::distance(PS.500, method = "bray") # rarefied
 
 # run NMDS on Bray distance object (defined above for 'bc_500'), this is
-set.seed(520)
 nmds.rar <- metaMDS(bc_500,
           distance = "bray",
           k = 3,
           maxit = 999, 
           wascores = TRUE)
 
+
 # get NMDS 1-3, we will use this later in NMDS plots
 scores.full <- as.data.frame(scores(nmds.rar, display = "sites"))
-nmds.rar.df <- merge(sample_data(PS.500), scores.full, by = 'row.names', all = TRUE)
+scores.1.2<-scores.full[-3] # subset to just give the 2 axis space for NMDs1-2
+
+nmds.rar.df <- merge(sample_data(PS.500), scores.1.2, by = 'row.names', all = TRUE)
 
 # pull out the sample data for PERMANOVA
-all.sam.df <- pssd2veg(PS.500) 
+# all.sam.df <- pssd2veg(PS.500) 
 
+# make the plot to visualize it (rough)
+ggplot(nmds.rar.df) +
+  geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = organism), size= 2) +
+  #coord_fixed(ratio=1.6) + 
+  stat_ellipse(level=0.95, linetype = 2, linewidth=0.6, aes(x = NMDS1, y = NMDS2, color=organism)) +
+  ggtitle("all samples")
+
+
+# Env model
+env.model.all <- adonis2(bc_500 ~ latitude + elevation_m + temp_C + pH + cond + 
+                            DOC + chla_ug.L + DO_perc, data = nmds.rar.df, permutations = 999)
+env.model.all # latitude is best (0.05), elevation (0.03), DO (0.016)
+
+```
+
+- distance to centroids
+```{r beta distance to centroids}
+######
+# lets look at beta diversity and distance to centroid a bit: (zoop species and water)
+# using the rarefied here since beta diversity metric
+set.seed(10000)
+bc_500.bd <- phyloseq::distance(PS.500, method = "bray") # rarefied 
+bc_beta.df <- as.data.frame(sample_data(PS.500))
+
+# one approach
+bd<-betadisper(bc_500.bd, bc_beta.df$organism, type="centroid")
+permutest(bd, permutations = 99)
+anova(bd)
+plot(bd)
+boxplot(bd)
+TukeyHSD(bd)
+
+par(mar=c(5,7,3,1)) 
+plot(TukeyHSD(bd), cex.axis=0.7, las=1)
+
+bc_betadisp<-plot(bd, ellipse = TRUE, hull = FALSE, label.cex = 0.4, main="Distance to Centroids")
+
+sqrt(dist(bd$centroids[,bd$eig>0])^2 - dist(bd$centroids[,bd$eig<0]^2))
+
+#
+bd$group.distances # this is Average distance to centroid for each group
+scores(bd, 1:2, display = "centroids") # this is the centroid for each group
+bd.df <- data.frame(Distance_to_centroid = bd$distances, organism=bd$group) # dataframe
+
+
+######## ######## ######## ######## 
+######## let's use another approach for NMDS only
+# calculate mean distances to centroid manually (use 'grp.median' if using not using centroid in betadisper)
+groups<-nmds.rar.df$organism
+
+df=NULL
+for(gr in unique(groups)) {
+  organism=print(gr)
+  grp.mean = colMeans(scores.1.2[groups == gr,])
+  # calculate the euclidean distance between centroid point and all other points
+  dist.to.centr = apply(scores.1.2[groups == gr,], 1, function(xx) {sqrt(sum((xx - grp.mean)^2))})
+  info = print(paste0('all axes mean dist to centroid: ', round(mean(dist.to.centr),4) )) # get the mean of all distances
+  df = rbind(df, data.frame(organism, dist.to.centr))
+}
+
+bdisp.df<-df
+bdisp.df$organism<-as.factor(bdisp.df$organism)
+bdisp.df$organism<-factor(bdisp.df$organism, levels =c("Daphnia", "Holopedium", 
+                                   "Calanoid", "Cyclopoid", "Water"))
+bdisp.df$dist.to.centr<-as.numeric(bdisp.df$dist.to.centr)
+
+### box plot for distance
+beta.dist.box<- ggplot(data=bdisp.df, aes(x=organism, y=dist.to.centr, color=organism)) +
+  geom_boxplot(aes(fill=organism), alpha=0.4) + guides(fill="none") +
+  geom_point(alpha=0.5) + 
+  ylim(0,1) +
+  guides(color=guide_legend(title=""))+ xlab("Sample Type")+ ylab("Distance to centroid") +
+  ggtitle("Beta diversity") +
+  scale_fill_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  scale_color_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  theme(axis.text.x=element_blank()) + theme_bw()+
+   theme(axis.text.x = element_text(angle = 20, vjust = 0.5, hjust=1))
+
+
+# test of distance to centroids
+beta.mod<-lm(dist.to.centr ~ organism, data = bdisp.df)
+posthoc.betad<-emmeans(beta.mod, pairwise~organism)
+multcomp::cld(posthoc.betad, Letters=letters)
+
+#organism   emmean     SE  df lower.CL upper.CL .group
+# Water       0.161 0.0603 276   0.0426    0.280  a    
+# Daphnia     0.352 0.0322 276   0.2890    0.416   b   
+# Cyclopoid   0.474 0.0373 276   0.4008    0.548   b   
+# Holopedium  0.475 0.1127 276   0.2529    0.697  abc  
+# Calanoid    0.707 0.0371 276   0.6336    0.780    c 
+ 
+# notused, but just in case...
+kruskal_test(dist.to.centr ~ organism, data = bdisp.df)
+dunn_test(dist.to.centr ~ organism, data = bdisp.df)
+```
+
+- combine the plots
+- multipanel alpha diversity plot from above with beta diversity distance to centroid
+```{r combine alpha and distance to centroids}
+# combine with richness
+alpha.beta.rich.plot<-plot_grid(alpha.time.lake, richness.spp.shan, 
+                           richness.spp.obs + guides(color="none", fill="none"), 
+                           beta.dist.box + guides(color="none", fill="none"),
+                      ncol=4, rel_widths=c(12,6,6,6))
+alpha.beta.rich.plot
+dev.copy(pdf, "figures/Fig4.alpha.beta.rich.plot.pdf", height=6, width=16)
+dev.off()
+```
+
+- PERMANOVA with Time, Lake, Organisms
+```{r full Permanova}
 ###############
+# Permanova with 3 methods
+# rarefied
+bc_500 <- phyloseq::distance(PS.500, method = "bray") # rarefied
+unif_500 <- phyloseq::distance(PS.500, method = "unifrac") # rarefied
+wunif_500 <- phyloseq::distance(PS.500, method = "wunifrac") # rarefied
+
 # run PERMANOVA with Time, Lake, Organisms
-# use the bray-curtis dist from phyloseq: bc_500
+# Bray-Curtis from phyloseq: bc_500
 set.seed(781)
 broad.model.zoop <- adonis2(bc_500 ~ time_point*lake*organism, 
-                            data = all.sam.df, method="bray", permutations = 999)
+                            data = nmds.rar.df, method="bray", permutations = 999)
 broad.model.zoop
 
 #test for beta dispersion
-anova(betadisper(bc_500, all.sam.df$lake)) #  not-signif (barely)
-anova(betadisper(bc_500, all.sam.df$time_point)) #  significant *barely
-anova(betadisper(bc_500, all.sam.df$organism)) # very significant
+anova(betadisper(bc_500, nmds.rar.df$lake)) #  not-signif (barely)
+anova(betadisper(bc_500, nmds.rar.df$time_point)) #  significant *barely
+anova(betadisper(bc_500, nmds.rar.df$organism)) # very significant
+
+pairwise.adonis(bc_500, factors=nmds.rar.df$time_point, p.adjust.m="holm")
+pairwise.adonis(bc_500, factors=nmds.rar.df$lake, p.adjust.m="holm")
+pairwise.adonis(bc_500, factors=nmds.rar.df$organism, p.adjust.m="holm")
+
+
+##### 
+### Weighted Unifrac from phyloseq: wunif_500
+set.seed(71)
+broad.model.zoop.wunif <- adonis2(wunif_500 ~ time_point*lake*organism, 
+                            data = nmds.rar.df, method="wunifrac", permutations = 999)
+broad.model.zoop.wunif
+
+#test for beta dispersion
+anova(betadisper(wunif_500, nmds.rar.df$lake)) #  not-signif (barely)
+anova(betadisper(wunif_500, nmds.rar.df$time_point)) #  significant *barely
+anova(betadisper(wunif_500, nmds.rar.df$organism)) # very significant
+
+pairwise.adonis(wunif_500, factors=nmds.rar.df$time_point, p.adjust.m="holm")
+pairwise.adonis(wunif_500, factors=nmds.rar.df$lake, p.adjust.m="holm")
+pairwise.adonis(wunif_500, factors=nmds.rar.df$organism, p.adjust.m="holm")
+
+
+##### 
+### Unifrac from phyloseq: unif_500
+set.seed(71)
+broad.model.zoop.unif <- adonis2(unif_500 ~ time_point*lake*organism, 
+                            data = nmds.rar.df, method="unifrac", permutations = 999)
+broad.model.zoop.unif
+
+#test for beta dispersion
+anova(betadisper(unif_500, nmds.rar.df$lake)) #  not-signif (barely)
+anova(betadisper(unif_500, nmds.rar.df$time_point)) #  significant *barely
+anova(betadisper(unif_500, nmds.rar.df$organism)) # very significant
+
+pairwise.adonis(unif_500, factors=nmds.rar.df$time_point, p.adjust.m="holm")
+pairwise.adonis(unif_500, factors=nmds.rar.df$lake, p.adjust.m="holm")
+pairwise.adonis(unif_500, factors=nmds.rar.df$organism, p.adjust.m="holm")
 
 ```
+
+
+#### By-group NMDS and envfit
 
 Run NMDS with envfit for water, daphnia, calanoids, cyclopoids to better understand how environment is impacting these host-microbiomes. We will run NMDS and fit env.fit, perform PERMANOVA, test betadispersion, and test env conditions on BC matrix. 
 
@@ -1027,7 +1758,7 @@ daph.phylo <- prune_taxa(taxa_sums(daph.phylo) >0, daph.phylo) # remove those as
 # first let's look at PERMANOVA for the full dataset
 # rarefied
 set.seed(1000)
-bc_daph <- phyloseq::distance(daph.phylo, method = "bray") # rarefied and hellinger transformed
+bc_daph <- phyloseq::distance(daph.phylo, method = "bray") # rarefied
 
 # run NMDS on Bray distance object (defined above for 'bc_500.hell'), this is
 set.seed(520)
@@ -1063,19 +1794,27 @@ spp.daph.scrs.signif<-spp.daph.scrs.test[spp.daph.scrs.test$pvals< 0.05, ]
 brewer.pal(n = 6, name = "GnBu")
 #scale_color_brewer(palette="GnBu", n=6, direction=-1) + if want to use the palette and reverse order
 
+# inspect
+plot(nmds.daph.rar)
+plot(vf.daph)
+
 # make the plot
 NMDS.daph <- ggplot(nmds.daph.rar.df) +
   geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = lake), size= 2) +
   #coord_fixed(ratio=1.6) + 
+  xlim(-2.2,1.7)+
+  ylim(-1.5,1.5)+
   stat_ellipse(level=0.95, linetype = 2, linewidth=0.6, aes(x = NMDS1, y = NMDS2, color=lake)) +
   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
   ggtitle("Daphnia")+
   geom_segment(data = spp.daph.scrs.signif,
                aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2),
                arrow = arrow(length = unit(0.25, "cm")), colour = "goldenrod4") +
-  geom_text(data = spp.daph.scrs.signif, aes(x = NMDS1, y = NMDS2, label = Envfact), color="lemonchiffon4",
-            size = 3)+
-  theme_classic()
+  geom_text(data = spp.daph.scrs.signif, aes(x = NMDS1, y = NMDS2, label = Envfact), color="goldenrod4",
+            size = 2.5)+
+  theme_classic() +
+  annotate(geom="text", x=1, y=-1.5, label="Stress=0.104", size=3,
+           color="black")
 
 ### permanova and betadisp
 # run PERMANOVA
@@ -1084,14 +1823,16 @@ broad.model.daph <- adonis2(bc_daph ~ time_point * lake,
                             data = nmds.daph.rar.df, permutations = 999)
 broad.model.daph # signif lake and time effect, driven by differences in time 2
 
+pairwise.adonis(bc_daph, factors=nmds.daph.rar.df$lake, p.adjust.m="holm")
+
 # Env model
 env.model.daph <- adonis2(bc_daph ~ latitude + elevation_m + temp_C + pH + cond + 
                             DOC + chla_ug.L + DO_perc, data = nmds.daph.rar.df, permutations = 999)
 env.model.daph # latitude is best (0.12), elevation (0.07), cond (0.07)
 
 # betadispersion
-anova(betadisper(bc_daph, nmds.daph.rar.df$time)) # not signf
-anova(betadisper(bc_daph, nmds.daph.rar.df$lake)) # not significant, (p=0.317)
+anova(betadisper(bc_daph, nmds.daph.rar.df$time)) # not signf, (p=0.234)
+anova(betadisper(bc_daph, nmds.daph.rar.df$lake)) # not significant, (p=0.526)
 ```
 
 - Now run NMDS-envfit for *calanoids*
@@ -1118,6 +1859,7 @@ nmds.calan.rar <- metaMDS(bc_calan,
 sp.calan.scores <- as.data.frame(scores(nmds.calan.rar, display = "sites"))
 nmds.calan.rar.df <- merge(sample_data(calan.phylo), sp.calan.scores, by = 'row.names', all = TRUE)
 
+
 #### pick envr. data and run the envfit function
 env.calan<- nmds.calan.rar.df %>%
   dplyr::select(latitude, longitude, elevation_m, temp_C, chla_ug.L, pH, DO_perc, cond, DOC, TDN, TDP)
@@ -1125,6 +1867,10 @@ env.calan<- nmds.calan.rar.df %>%
 set.seed(123)
 vf.calan <- envfit(nmds.calan.rar, env.calan, perm = 999, na.rm = TRUE) 
 # lots of significance, except elevation, pH, DOC, TDN,    highest significance lat/long, spc, cond
+
+# inspect
+plot(nmds.calan.rar)
+plot(vf.calan)
 
 ### grab vectors and put into df
 spp.calan.scrs <- as.data.frame(scores(vf.calan, display = "vectors")) *ordiArrowMul(vf.calan)
@@ -1145,9 +1891,12 @@ NMDS.calan <- ggplot(nmds.calan.rar.df) +
   geom_segment(data = spp.calan.scrs.signif,
                aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2),
                arrow = arrow(length = unit(0.25, "cm")), colour = "goldenrod4") +
-  geom_text(data = spp.calan.scrs.signif, aes(x = NMDS1, y = NMDS2, label = Envfact), color="lemonchiffon4",
-            size = 3)+
-  theme_classic()
+  geom_text(data = spp.calan.scrs.signif, 
+            aes(x = NMDS1, y = NMDS2, label = Envfact), color="goldenrod4",
+            size = 2.5)+
+  theme_classic() +
+  annotate(geom="text", x=1, y=-4, label="Stress=0.117", size=3,
+           color="black")
 
 ### permanova and betadisp
 # run PERMANOVA
@@ -1156,14 +1905,16 @@ broad.model.calan <- adonis2(bc_calan ~ time_point * lake,
                             data = nmds.calan.rar.df, permutations = 999)
 broad.model.calan # signif lake and time effect, driven by differences in time 1 and 5 (whcih are similar) 
 
+pairwise.adonis(bc_calan, factors=nmds.calan.rar.df$lake, p.adjust.m="holm")
+
 # Env model
 env.model.calan <- adonis2(bc_calan ~ latitude + elevation_m + temp_C + pH + cond + 
                             DOC + chla_ug.L + DO_perc, data = nmds.calan.rar.df, permutations = 999)
 env.model.calan # elevation (0.22), latitude is best (0.13)
 
 # betadispersion
-anova(betadisper(bc_calan, nmds.calan.rarhell.df$time)) # NS
-anova(betadisper(bc_calan, nmds.calan.rarhell.df$lake)) # significant (p=0.04))
+anova(betadisper(bc_calan, nmds.calan.rar.df$time)) # NS
+anova(betadisper(bc_calan, nmds.calan.rar.df$lake)) # significant (p=0.004))
 ```
 
 - Now run NMDS-envfit for *cyclopoids*
@@ -1207,6 +1958,10 @@ names(spp.cyclop.scrs.test)[names(spp.cyclop.scrs.test) == 'r'] <- 'r2' # rename
 # subset to keep only those Envfactors that are significant 
 spp.cyclop.scrs.signif<-spp.cyclop.scrs.test[spp.cyclop.scrs.test$pvals< 0.05, ]
 
+# inspect
+plot(nmds.cyclop.rar)
+plot(vf.cyclop)
+
 # make the plot
 NMDS.cyclop <- ggplot(nmds.cyclop.rar.df) +
   geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = lake), size=2) +
@@ -1217,9 +1972,11 @@ NMDS.cyclop <- ggplot(nmds.cyclop.rar.df) +
   geom_segment(data = spp.cyclop.scrs.signif,
                aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2),
                arrow = arrow(length = unit(0.25, "cm")), colour = "goldenrod4") +
-  geom_text(data = spp.cyclop.scrs.signif, aes(x = NMDS1, y = NMDS2, label = Envfact), color="lemonchiffon4",
-            size = 3)+
-  theme_classic()
+  geom_text(data = spp.cyclop.scrs.signif, aes(x = NMDS1, y = NMDS2, label = Envfact), color="goldenrod4",
+            size = 2.5)+
+  theme_classic()+
+  annotate(geom="text", x=2, y=-1.75, label="Stress=0.129", size=3,
+           color="black")
 
 
 ### permanova and betadisp
@@ -1228,6 +1985,8 @@ set.seed(781)
 broad.model.cyclop <- adonis2(bc_cyclop ~ time_point * lake, 
                             data = nmds.cyclop.rar.df, permutations = 999)
 broad.model.cyclop # signif lake and time effect, driven by time 2
+
+pairwise.adonis(bc_cyclop, factors=nmds.cyclop.rar.df$lake, p.adjust.m="holm")
 
 # Env model
 env.model.cyclop <- adonis2(bc_cyclop ~ latitude + elevation_m + temp_C + pH + cond + 
@@ -1281,26 +2040,36 @@ names(spp.water.scrs.test)[names(spp.water.scrs.test) == 'r'] <- 'r2' # rename b
 # subset to keep only those Envfactors that are significant 
 spp.water.scrs.signif<-spp.water.scrs.test[spp.water.scrs.test$pvals< 0.05, ]
 
+# inspect
+plot(nmds.water.rar)
+plot(vf.water)
+
 # make the plot
 NMDS.water <- ggplot(nmds.water.rar.df) +
   geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = lake), size=2) +
   #coord_fixed(ratio=0.7) + 
+  xlim(-1.3, 1.5)+
+  ylim(-2.7,2.3)+
   stat_ellipse(level=0.95, linetype = 2, linewidth=0.6, aes(x = NMDS1, y = NMDS2, color=lake)) +
   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
   ggtitle("Water")+
   geom_segment(data = spp.water.scrs.signif,
                aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2),
                arrow = arrow(length = unit(0.25, "cm")), colour = "goldenrod4") +
-  geom_text(data = spp.water.scrs.signif, aes(x = NMDS1, y = NMDS2, label = Envfact), color="lemonchiffon4",
-            size = 3)+
-  theme_classic()
+  geom_text(data = spp.water.scrs.signif, aes(x = NMDS1, y = NMDS2, label = Envfact), color="goldenrod4",
+            size = 2.5)+
+  theme_classic() + 
+  annotate(geom="text", x=1, y=-2.7, label="Stress=0.082", size=3,
+           color="black")
 
 ### permanova and betadisp
 # run PERMANOVA
 set.seed(781)
 broad.model.water <- adonis2(bc_water ~ time_point + lake, 
                             data = nmds.water.rar.df, permutations = 999)
-broad.model.water # signif lake effect, lake effects minimal and largely random
+broad.model.water # signif lake effect, time effects minimal and largely random
+
+pairwise.adonis(bc_water, factors=nmds.water.rar.df$lake, p.adjust.m="holm")
 
 # Env model
 env.model.water <- adonis2(bc_water ~ latitude + elevation_m + temp_C + pH + cond + 
@@ -1326,29 +2095,36 @@ NMDS.env.species<-plot_grid(NMDS.daph + guides(color="none"),
           ncol=5, rel_widths = c(10,10,10,10,3), labels = c("A","B", "C", "D", ""))
 
 NMDS.env.species
-dev.copy(pdf, "figures/Figx.NMDS.env.specieswater.pdf", height=4, width=13)
+dev.copy(pdf, "figures/Fig6.NMDS.env.specieswater.pdf", height=4, width=13)
 dev.off()
 ```
+
+
+#### NMDS by taxa-space-time
 
 This code runs NMDS plots for all the data with different binning factors. May need to reduce and/or decide if PCoA or NMDS is best for showing "full community differences", which presently is in both places.
 ```{r General NMDS time, lake, basin, etc)}
 
 nmds.organism <- ggplot(nmds.rar.df, aes(x=NMDS1, y=NMDS2, color = organism)) +
-  geom_point(aes(color = organism, shape=sample_type), size = 1.5) + 
+  geom_point(aes(color = organism, shape=sample_type), size = 1.3) + 
   stat_ellipse(level=0.95, lwd = 0.5, linetype = 2, aes(color=organism)) +
-  scale_color_manual(values=c("coral2", "gold3", "darkseagreen", "darkslategray4", "steelblue2")) +
+  xlim(-2.4,2.25)+
+  ylim(-2.2,2.4)+
+  scale_color_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
   scale_shape_manual(values=c(1,16))+
-  ggtitle("by Taxa, pooled") +
+  ggtitle("Organism") +
   theme_classic()
 
 
 nmds.phy_group <- ggplot(nmds.rar.df, aes(x=NMDS1, y=NMDS2, color = phy_group)) +
-  geom_point(aes(color = phy_group, shape=sample_type), size = 1.5) + 
+  geom_point(aes(color = phy_group, shape=sample_type), size = 1.3) + 
   stat_ellipse(level=0.95, lwd = 0.5, linetype = 2, aes(color=phy_group)) +
   theme_classic()+
+  xlim(-2.4,2.25)+
+  ylim(-2.2,2.4)+
   scale_color_manual(values = c("indianred3","darkolivegreen4", "dodgerblue3")) +
   scale_shape_manual(values=c(1,16))+
-  ggtitle("by Phygroup, pooled")
+  ggtitle("Taxonomic Group")
 
 
 
@@ -1361,11 +2137,13 @@ nmds.rar.df$Date<-recode_factor(nmds.rar.df$Date,
                                 "5" = "22-Aug")
 
 nmds.time <- ggplot(nmds.rar.df, aes(x=NMDS1, y=NMDS2)) +
-  geom_point(aes(color = Date, shape=sample_type), size = 1.5) + 
+  geom_point(aes(color = Date, shape=sample_type), size = 1.3) + 
   stat_ellipse(level=0.95, lwd = 0.5, linetype = 2, aes(color=Date)) +
   scale_shape_manual(values=c(1,16))+
+  xlim(-2.4,2.25)+
+  ylim(-2.2,2.4)+
   scale_color_manual(values=c("indianred4", "indianred1", "orange", "palevioletred", "thistle")) + 
-  ggtitle("by Time, pooled") +
+  ggtitle("Sampling Time Point") +
   theme_classic()
  
 # plot by lake and basin and rename the factors
@@ -1379,39 +2157,30 @@ nmds.rar.df$int.basin.type <- recode_factor(nmds.rar.df$int.basin.type,
 
 
 nmds.lake.basin <- ggplot(nmds.rar.df, aes(x=NMDS1, y=NMDS2)) +
-  geom_point(aes(color = lake, shape=int.basin.type), size = 1.5) + 
+  geom_point(aes(color = lake, shape=int.basin.type), size = 1.3) + 
   stat_ellipse(level=0.95, lwd = 0.5, linetype = 2, aes(color=lake)) +
   scale_shape_manual(values=c(0,2,15,17)) +
+  xlim(-2.4,2.25)+
+  ylim(-2.2,2.4)+
   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
-  ggtitle("by Lake-Basin, pooled") +
+  ggtitle("Lake-Basin") +
   theme_classic()
 
 
 phy_group_plots_combined <- plot_grid(
-  nmds.phy_group, nmds.time, nmds.lake.basin,  rel_widths = c(3,3,3,3),
-  nrow=1, ncol=3, labels = c("A","B", "C"))
+  nmds.organism, nmds.phy_group, nmds.time, nmds.lake.basin,  rel_widths = c(3,3,3,3,3),
+  nrow=2, ncol=2, labels = c("A","B","C","D"))
 
 phy_group_plots_combined
-dev.print(pdf, "figures/Figx.NMDS.groupeffects.pdf", height=4, width=13)
-dev.off()
-
-########## ########## ########## ########## ########## ########## 
-########## combine the full NMDS here with the unifracs plot
-
-Unifrac.NMDS <- plot_grid(
-  PCoA.rar.W.unif + guides(color="none",  shape="none"), 
-  nmds.organism + guides(color="none",  shape="none"), 
-  extract.legend.PCoA, rel_widths = c(3,3,1),
-  nrow=1, ncol=3, labels = c("A","B", ""))
-
-Unifrac.NMDS
-dev.print(pdf, "figures/Figx.Unifrac.NMDS.pdf", height=4, width=9)
+dev.print(pdf, "figures/Fig5.NMDS.groupeffects.pdf", height=8, width=10)
 dev.off()
 ```
 
+#### Stacked bar
 Relative abundance stacked bar plot
 ```{r stacked bar plots}
 ########### plotting relative abundance, help from Megan Demmel, this is what I will use for analysis of relative abundances/ composition
+PS.500 %>%  plot_composition()
 
 # unload("MicrobiotaProcess") if there is an issue with the taxa table, this is the source (conflict)
 pm <- psmelt(PS.500)
@@ -1430,9 +2199,9 @@ View(Abund.final)
 
 Abund.final$Class<-as.factor(Abund.final$Class)
 Abund.final$Class<-factor(Abund.final$Class, 
-                          levels=c("Acidimicrobiia", "Actinobacteria", "Alphaproteobacteria", "Armatimonadia",
-                                   "Bacilli", "Bacteroidia", "Cyanobacteriia", "Gammaproteobacteria", "Saccharimonadia",
-                                  "Verrucomicrobiae", "Other (<5%)"))
+                          levels=c("Acidimicrobiia", "Actinobacteria", "Alphaproteobacteria",
+                              "Bacilli", "Bacteroidia", "Cyanobacteriia", "Gammaproteobacteria", "Saccharimonadia",
+                               "Verrucomicrobiae", "Other (<5%)"))
 
 Abund.final$Date<-as.factor(Abund.final$time_point)
 Abund.final$Date<-recode_factor(Abund.final$Date, 
@@ -1442,34 +2211,216 @@ Abund.final$Date<-recode_factor(Abund.final$Date,
                                 "4" = "4-Aug",
                                 "5" = "22-Aug")
 
-# plot by sample type
-overall.comp.class <- ggplot(Abund.final, aes(x=organism, y=rel_abund, fill=Class, color=Class)) +
-  geom_bar(aes(fill=Class, color=Class), stat="identity", position="fill") +
-  xlab("Sample Type") +ylab("Relative Abundance (%)") + theme_bw() +
-  theme(axis.text.x=element_text(size=10)) + theme(axis.title.x=element_text(size=13)) +
-  theme(axis.text.y=element_text(size=11)) + theme(axis.title.y=element_text(size=13)) +
-  scale_fill_manual(values = c("red4", "orangered", "gold", "lightsalmon", "turquoise3", "seagreen4", "lightgreen", "lightskyblue", "royalblue3", "plum", "tan3")) +
-  scale_color_manual(values = c("red4", "orangered", "gold", "lightsalmon", "turquoise3", "seagreen4", "lightgreen", "lightskyblue", "royalblue3", "plum", "tan3"))
-overall.comp.class
-dev.copy(pdf, "figures/overall.comp.class.pdf", height=6, width=10)
-dev.off()
+sum.rel<-aggregate(rel_abund~phy_group:Class:lake:Date:sampleNames, data=Abund.final, FUN=sum)
 
 # rel abund plot across time, lake, and sample type
-Rel.abund.phy <- ggplot(Abund.final, aes(x = Date, y = rel_abund, fill= Class, color = Class)) +
+Rel.abund.class <- ggplot(Abund.final, aes(x = Date, y = rel_abund, fill= Class, color = Class)) +
   geom_bar(width = 0.8, aes(fill = Class, color = Class), stat ="identity", position = "fill") +
   facet_grid(cols = vars(lake), rows = vars(phy_group)) + 
   xlab("Sampling Time Point") +  
-  ylab("Relative Abundance (%)") +
+  ylab("Relative Abundance") +
   theme_bw() +
   theme(axis.text.x=element_text(size=8, angle = 75, vjust = 0.5, hjust=1), axis.title.x=element_text(size=13)) +
   theme(axis.text.y=element_text(size=11), axis.title.y=element_text(size=13)) +
   theme(strip.text.x = element_text(size = 13), strip.text.y = element_text(size = 13)) +
-  scale_fill_manual(values = c("red4", "orangered", "gold", "lightsalmon", "turquoise3", "seagreen4", "lightgreen", "lightskyblue", "royalblue3", "plum", "tan3")) +
-  scale_color_manual(values = c("red4", "orangered", "gold", "lightsalmon", "turquoise3", "seagreen4", "lightgreen", "lightskyblue", "royalblue3", "plum", "tan3"))
+  scale_fill_manual(values = c("red4", "orangered", "gold", "lightsalmon", "seagreen4", "lightgreen","lightskyblue", "royalblue3", "plum", "tan3")) +
+  scale_color_manual(values = c("red4", "orangered", "gold", "lightsalmon", "seagreen4", "lightgreen","lightskyblue", "royalblue3", "plum", "tan3"))
 
-Rel.abund.phy
-dev.copy(pdf, "figures/Relabund.facet.pdf", height=10, width=12)
+Rel.abund.class
+dev.copy(pdf, "figures/Fig7.Relabund.facet.pdf", height=10, width=12)
 dev.off()
+```
+
+```{r phyloseq class and family RA}
+
+### being paranoid... show me that phyloseq makes the same figure as above at class level
+#total = median(sample_sums(PS.500))
+#standf = function(x, t=total) round(t * (x / sum(x)))
+#normalized_ps = transform_sample_counts(PS.500, standf)
+
+merged.PS.500 <- merge_samples(PS.500, "sampleNames") # merge by samples (this is how data should be already)
+sample_data(merged.PS.500)$phy_group <- factor(sample_data(PS.500)$phy_group)
+sample_data(merged.PS.500)$lake <- factor(sample_data(PS.500)$lake)
+
+normalized_ps_class = tax_glom(merged.PS.500, "Class", NArm = TRUE)
+normalized_ps_class_relabun = transform_sample_counts(normalized_ps_class, function(OTU) OTU/sum(OTU))
+
+############
+ps.abund.class<-psmelt(normalized_ps_class_relabun)
+ps.abund.class<-ps.abund.class %>%
+   dplyr::rename("rel_abund" = "Abundance") 
+
+# classes that have rel.abund less than 5% will be named as other
+ps.abund.class$Class[ps.abund.class$rel_abund <= 0.051] <- "Other (<5%)" 
+
+ps.abund.class$Class<-as.factor(ps.abund.class$Class)
+ps.abund.class$Class<-fct_relevel(ps.abund.class$Class, 'Other (<5%)', after=Inf)
+
+ps.abund.class$Date<-as.factor(ps.abund.class$time_point)
+ps.abund.class$Date<-recode_factor(ps.abund.class$Date, 
+                                "1" = "25-Jun",
+                                "2" = "6-Jul",
+                                "3" = "21-Jul",
+                                "4" = "4-Aug",
+                                "5" = "22-Aug")
+
+# by lake, time, phy_group
+ggplot(ps.abund.class, aes(x = Date, y = rel_abund, fill= Class, color = Class)) +
+  geom_bar(width = 0.8, aes(fill = Class, color = Class), stat ="identity", position = "fill") +
+  facet_grid(cols = vars(lake), rows = vars(phy_group)) + 
+  xlab("Sampling Time Point") +  
+  ylab("Relative Abundance") +
+  theme_bw() +
+  theme(axis.text.x=element_text(size=8, angle = 75, vjust = 0.5, hjust=1), axis.title.x=element_text(size=13)) +
+  theme(axis.text.y=element_text(size=11), axis.title.y=element_text(size=13)) +
+  theme(strip.text.x = element_text(size = 13), strip.text.y = element_text(size = 13)) +
+  scale_fill_manual(values = c("red4", "orangered", "gold", "lightsalmon", "seagreen4", "lightgreen","lightskyblue", "royalblue3", "plum", "tan3")) +
+  scale_color_manual(values = c("red4", "orangered", "gold", "lightsalmon", "seagreen4", "lightgreen","lightskyblue", "royalblue3", "plum", "tan3"))                                      
+
+
+# if merged across all samples at organism level...
+merged.PS.500.organism <- merge_samples(PS.500, "organism") # merge by organisms, pooling across all levels
+sample_data(merged.PS.500.organism)$organism<-factor(c("Daphnia", "Holopedium", "Calanoid", "Cyclopoid", "Water"))
+sample_data(merged.PS.500.organism)$organism<-factor(sample_data(merged.PS.500.organism)$organism,
+                                  levels=c("Daphnia", "Holopedium", "Calanoid", "Cyclopoid", "Water"))
+
+normalized_ps_class.org = tax_glom(merged.PS.500.organism, "Class", NArm = TRUE)
+norm_ps_class_relabun_org = transform_sample_counts(normalized_ps_class.org, function(OTU) OTU/sum(OTU))
+
+ps.abund.class.org<-psmelt(norm_ps_class_relabun_org)
+ps.abund.class.org<-ps.abund.class.org %>%
+   dplyr::rename("rel_abund" = "Abundance") 
+
+# classes that have rel.abund less than 5% will be named as other
+ps.abund.class.org$Class[ps.abund.class.org$rel_abund <= 0.05] <- "Other (<5%)" 
+
+ps.abund.class.org$Class<-as.factor(ps.abund.class.org$Class)
+ps.abund.class.org$Class<-fct_relevel(ps.abund.class.org$Class, 'Other (<5%)', after=Inf)
+ps.abund.class.org$organism<-factor(ps.abund.class.org$organism)
+
+
+ggplot(ps.abund.class.org, aes(x=organism, y=rel_abund, fill=Class, color=Class)) +
+  geom_bar(aes(fill=Class, color=Class), stat="identity", position="fill") +
+  xlab("Sample Type") +ylab("Relative Abundance") + theme_bw() +
+  theme(axis.text.x=element_text(size=10)) + theme(axis.title.x=element_text(size=13)) +
+  theme(axis.text.y=element_text(size=11)) + theme(axis.title.y=element_text(size=13)) +
+  scale_fill_manual(values = c("orangered", "gold", "seagreen4", "lightskyblue", "plum", "tan3")) +
+  scale_color_manual(values = c("orangered", "gold", "seagreen4", "lightskyblue", "plum", "tan3"))
+
+
+class.org.dom<-ps.abund.class.org[!(ps.abund.class.org$Class=="Other (<5%)"),]
+class.org.dom.sum<- class.org.dom %>%
+  dplyr::select(organism, rel_abund, Class)
+
+
+
+
+
+############# by Family
+normalized_ps_family = tax_glom(merged.PS.500, "Family", NArm = TRUE)
+normalized_ps_family_relabun = transform_sample_counts(normalized_ps_family, function(OTU) OTU/sum(OTU))
+
+ps.abund.family<-psmelt(normalized_ps_family_relabun)
+ps.abund.family<-ps.abund.family %>%
+   dplyr::rename("rel_abund" = "Abundance") 
+
+# classes that have rel.abund less than 10% will be named as other
+ps.abund.family$Family[ps.abund.family$rel_abund <= 0.10] <- "Other (<10%)" 
+
+ps.abund.family$Family<-as.factor(ps.abund.family$Family)
+ps.abund.family$Family<-fct_relevel(ps.abund.family$Family, 'Other (<10%)', after=Inf)
+
+ps.abund.family$Date<-as.factor(ps.abund.family$time_point)
+ps.abund.family$Date<-recode_factor(ps.abund.family$Date, 
+                                "1" = "25-Jun",
+                                "2" = "6-Jul",
+                                "3" = "21-Jul",
+                                "4" = "4-Aug",
+                                "5" = "22-Aug")
+
+# family-class
+
+ps.abund.family$Fam.clas.other<-paste(ps.abund.family$Class, ps.abund.family$Family, sep="-")
+ps.abund.family$Fam.clas.other<-ifelse(
+                  ps.abund.family$Family == "Other (<10%)", "Other (<10%)", ps.abund.family$Fam.clas.other)
+
+ps.abund.family$Fam.clas.other<-fct_relevel(ps.abund.family$Fam.clas.other, 'Other (<10%)', after=Inf)
+
+
+ggplot(ps.abund.family, aes(x = Date, y = rel_abund, fill= Fam.clas.other, color = Fam.clas.other)) +
+  geom_bar(width = 0.8, aes(fill = Fam.clas.other, color = Fam.clas.other),
+           stat ="identity", position = "fill") +
+  facet_grid(cols = vars(lake), rows = vars(phy_group)) + 
+  xlab("Sampling Time Point") +  
+  ylab("Relative Abundance") +
+  theme_bw() +
+  theme(axis.text.x=element_text(size=8, angle = 75, vjust = 0.5, hjust=1), axis.title.x=element_text(size=13)) +
+  theme(axis.text.y=element_text(size=11), axis.title.y=element_text(size=13)) +
+  theme(strip.text.x = element_text(size = 13), strip.text.y = element_text(size = 13)) +
+  scale_fill_manual(values = c("tomato", "coral",
+                               "goldenrod2","gold", "yellow2",
+                               "navajowhite3",
+                               "olivedrab","springgreen4","seagreen3", "yellowgreen",
+                               "mediumaquamarine","limegreen","palegreen2","darkseagreen3",
+      "steelblue4","blue", "royalblue3", "cornflowerblue", "dodgerblue", "skyblue3","lightskyblue", "lightblue", "paleturquoise", "slategray1", "slategray3",
+      "gray50", "gray30",
+     "thistle"))+
+  scale_color_manual(values = c("tomato", "coral",
+                               "goldenrod2","gold", "yellow2",
+                               "navajowhite3",
+                               "olivedrab","springgreen4","seagreen3", "yellowgreen",
+                               "mediumaquamarine","limegreen","palegreen2","darkseagreen3",
+      "steelblue4","blue", "royalblue3", "cornflowerblue", "dodgerblue","skyblue3", "lightskyblue", "lightblue", "paleturquoise", "slategray1", "slategray3",
+      "gray50", "gray30",
+     "thistle"))
+
+
+
+# if merged across all samples at organism level...
+normalized_ps_family.org = tax_glom(merged.PS.500.organism, "Family", NArm = TRUE)
+norma_ps_family_relabun_org = transform_sample_counts(normalized_ps_family.org, function(OTU) OTU/sum(OTU))
+
+ps.abund.fam.org<-psmelt(norma_ps_family_relabun_org)
+ps.abund.fam.org<-ps.abund.fam.org %>%
+   dplyr::rename("rel_abund" = "Abundance") 
+
+# families that have rel.abund less than 10% will be named as other
+ps.abund.fam.org$Family[ps.abund.fam.org$rel_abund <= 0.05] <- "Other (<5%)" 
+
+ps.abund.fam.org$Fam.clas.other<-paste(ps.abund.fam.org$Class, ps.abund.fam.org$Family, sep="-")
+ps.abund.fam.org$Fam.clas.other<-ifelse(
+                  ps.abund.fam.org$Family == "Other (<5%)", "Other (<5%)", ps.abund.fam.org$Fam.clas.other)
+
+ps.abund.fam.org$Fam.clas.other<-fct_relevel(ps.abund.fam.org$Fam.clas.other, 'Other (<5%)', after=Inf)
+
+
+ggplot(ps.abund.fam.org, aes(x = organism, y = rel_abund, fill= Fam.clas.other, color = Fam.clas.other)) +
+  geom_bar(width = 0.8, aes(fill = Fam.clas.other, color = Fam.clas.other),
+           stat ="identity", position = "fill") +
+  xlab("Zooplankton and Water Samples") +  
+  ylab("Relative Abundance") +
+  theme_bw() +
+  theme(axis.text.x=element_text(size=8, vjust = 0.5, hjust=1), axis.title.x=element_text(size=13)) +
+  theme(axis.text.y=element_text(size=11), axis.title.y=element_text(size=13)) +
+  theme(strip.text.x = element_text(size = 13), strip.text.y = element_text(size = 13)) +
+   scale_fill_manual(values = c("orangered",
+                               "goldenrod1",
+                               "springgreen4",  "limegreen","yellowgreen",
+      "deepskyblue4", "steelblue", "cornflowerblue", "lightskyblue","turquoise", "tan3")) +
+  scale_color_manual(values = c("orangered",
+                               "goldenrod2",
+                               "springgreen4", "limegreen", "yellowgreen",
+      "deepskyblue4",  "steelblue", "cornflowerblue", "lightskyblue", "turquoise","tan3"))
+
+dev.copy(pdf, "figures/FigSx.Relabund.class.fam.pdf", height=8, width=10)
+dev.off()
+
+
+fam.org.dom<-ps.abund.fam.org[!(ps.abund.fam.org$Fam.clas.other=="Other (<5%)"),]
+fam.org.dom.sum<- fam.org.dom %>%
+  dplyr::select(organism, rel_abund, Fam.clas.other)
+
+
 ```
 
 ```{r testing effects of env. variables on rel. abund. and richness of dominant bacteria}
@@ -1496,11 +2447,11 @@ FitAll.gamma <- lm(Gamma.rel_abund.sum ~ temp_C + DO_perc + pH + DOC + elevation
 step(FitAll.gamma, direction = "both")
 
 # best model
-Best.gamma<-lm(Gamma.rel_abund.sum ~ temp_C + pH + DOC + cond + chla_ug.L, data = gammaproteobacteria)
+Best.gamma<-lm(Gamma.rel_abund.sum ~ cond, data = gammaproteobacteria)
 summary(Best.gamma)
-Anova(Best.gamma) # conductivity is most important, DOC to lesser degree. Gamma decline with conduct. overall
+Anova(Best.gamma) # conductivity is most important, Gamma decline with conduct. overall
 
-anova(lm(Gamma.rel_abund.sum ~ cond , data = gammaproteobacteria))
+anova(lm(Gamma.rel_abund.sum ~ cond , data = gammaproteobacteria)) #p=0.040, R2=0.012
 
 gamma_cond <- ggplot(gammaproteobacteria, aes(x=cond, y=Gamma.rel_abund.sum)) +
   geom_smooth(method = lm, color="lightskyblue", alpha=0.2, fill="lightskyblue")+
@@ -1509,56 +2460,10 @@ gamma_cond <- ggplot(gammaproteobacteria, aes(x=cond, y=Gamma.rel_abund.sum)) +
   xlab("Conductivity(uS/cm)") + ylab("Relative Abundance") +
   theme(axis.text.x=element_text(size=14)) + theme(axis.title.x=element_text(size=16)) +
   theme(axis.text.y=element_text(size=14)) + theme(axis.title.y=element_text(size=16))+
-  ggtitle("Gammaproteobacteria") + theme_classic()
+  ggtitle("Gammaproteobacteria") + theme_classic()+
+  annotate(geom="text", x=60, y=1.0, label="Adjusted-R2=0.012, p=0.040", size=2,
+           color="black")
 gamma_cond
-
-
-##### Bacteroidia
-bacteroidia <- subset(Abund.final, Class == "Bacteroidia")
-bacteroidia <- summaryBy(rel_abund ~ sampleNames, data = bacteroidia, FUN = sum)
-bacteroidia <- data.frame(bacteroidia, row.names = bacteroidia[,1])
-names(bacteroidia)[names(bacteroidia) == 'rel_abund.sum'] <- 'Bactero.rel_abund.sum'
-bacteroidia <- merge(bacteroidia, sample_data(PS.500), by = "row.names")
-names(bacteroidia)[names(bacteroidia) == 'sampleNames.x'] <- 'sampleNames'
-
-#run a model
-Bactero.model<-lm(Bactero.rel_abund.sum ~ time_point + lake + phy_group, data = bacteroidia)
-Anova(Bactero.model, type=2)
-plot(allEffects(Bactero.model)) # time marginal signif, lake and phy strong
-
-# testing environmental effects on alphaproteobacteria abundances
-FitAll.Bactero<- lm(Bactero.rel_abund.sum ~ temp_C + DO_perc + pH + DOC + elevation_m + cond + chla_ug.L, data = bacteroidia)
-step(FitAll.Bactero, direction = "both") # temp_C + DOC + elevation_m  best
-
-# best model
-Best.bactero<-lm(Bactero.rel_abund.sum ~ temp_C + DOC + elevation_m, data = bacteroidia)
-summary(Best.bactero)
-Anova(Best.bactero) # DOC signif, temp  signif, no elevation effect. Decline with DOC and temp
-plot(allEffects(Best.bactero))
-
-summary(lm(Bactero.rel_abund.sum ~ temp_C, data = bacteroidia))
-
-# plot it
-bactero_DOC <- ggplot(bacteroidia, aes(x=DOC, y=Bactero.rel_abund.sum)) +
-  geom_smooth(method = lm, color="seagreen3", alpha=0.2, fill="seagreen3")+
-  geom_point(color="seagreen4", size=1.5, alpha=0.6)+
-  ylim(c(0,1))+
-  xlab("DOC (mg/L)") + ylab("Relative Abundance") +
-  theme(axis.text.x=element_text(size=14)) + theme(axis.title.x=element_text(size=16)) +
-  theme(axis.text.y=element_text(size=14)) + theme(axis.title.y=element_text(size=16)) + 
-  ggtitle("Bacteroidia") + theme_classic()
-bactero_DOC 
-
-# plot it
-bactero_temp <- ggplot(bacteroidia, aes(x=temp_C, y=Bactero.rel_abund.sum)) +
-  geom_smooth(method = lm, color="seagreen3", alpha=0.2, fill="seagreen3")+
-  geom_point(color="seagreen4", size=1.5, alpha=0.6)+
-  ylim(c(0,1))+
-  xlab("Temperature (C)") + ylab("Relative Abundance") +
-  theme(axis.text.x=element_text(size=14)) + theme(axis.title.x=element_text(size=16)) +
-  theme(axis.text.y=element_text(size=14)) + theme(axis.title.y=element_text(size=16)) + 
-  ggtitle("Bacteroidia") + theme_classic()
-bactero_temp 
 
 
 ########### ALPHAPROTEOBACTERIA
@@ -1580,22 +2485,22 @@ FitAll.alpha<- lm(Alphapr.rel_abund.sum ~ temp_C + DO_perc + pH + DOC + elevatio
 step(FitAll.alpha, direction = "both") # best is temp_C + DO_perc + cond + chla_ug.L
 
 # best model
-Best.alpha<-lm(Alphapr.rel_abund.sum ~ temp_C + DO_perc + cond + chla_ug.L, data = alphaproteobacteria)
+Best.alpha<-lm(Alphapr.rel_abund.sum ~  DO_perc, data = alphaproteobacteria)
 summary(Best.alpha)
 Anova(Best.alpha) # DO is most important, cond less so. Alpha decline with DO and cond increasing, increase with temp
 plot(allEffects(Best.alpha))
 
-anova(lm(Alphapr.rel_abund.sum ~ DO_perc , data = alphaproteobacteria))
-
 # plot it
 alpha_DO <- ggplot(alphaproteobacteria, aes(x=DO_perc, y=Alphapr.rel_abund.sum)) +
-  geom_smooth(method = lm, color="gold2", alpha=0.2, fill="gold2")+
+  geom_smooth(method = lm, color="goldenrod2", alpha=0.2, fill="goldenrod2")+
   geom_point(color="gold3", size=1.5, alpha=0.6)+
   ylim(c(0,1))+
   xlab("Dissolved Oxygen (%)") + ylab("Relative Abundance") +
   theme(axis.text.x=element_text(size=14)) + theme(axis.title.x=element_text(size=16)) +
   theme(axis.text.y=element_text(size=14)) + theme(axis.title.y=element_text(size=16)) +
-  ggtitle("Alphaproteobacteria") + theme_classic()
+  ggtitle("Alphaproteobacteria") + theme_classic() +
+  annotate(geom="text", x=75, y=1.0, label="Adjusted-R2=0.098, p<0.001", size=2,
+           color="black")
 alpha_DO
 
 
@@ -1609,7 +2514,7 @@ names(actinobacteria)[names(actinobacteria) == 'sampleNames.x'] <- 'sampleNames'
 
 #run a model
 Actin.model<-lm(Actinob.rel_abund.sum ~ time_point + lake + phy_group, data = actinobacteria)
-Anova(Actin.model, type=2)
+Anova(Actin.model)
 plot(allEffects(Actin.model))
 # lake, phy.group all matter
 
@@ -1631,30 +2536,71 @@ actino_chla <- ggplot(actinobacteria, aes(x=chla_ug.L, y=Actinob.rel_abund.sum))
   xlab("Chlorophyll a (ug/L)") + ylab("Relative Abundance") +
   theme(axis.text.x=element_text(size=14)) + theme(axis.title.x=element_text(size=16)) +
   theme(axis.text.y=element_text(size=14)) + theme(axis.title.y=element_text(size=16)) +
-  ggtitle("Actinobacteria") + theme_classic()
+  ggtitle("Actinobacteria") + theme_classic() +
+   annotate(geom="text", x=1, y=1.0, label="Adjusted-R2=0.112, p=0.032", size=2,
+           color="black")
 actino_chla 
 
-
-##### CYANOBACTERIA
-cyanobacteriia <- subset(Abund.final, Class == "Cyanobacteriia")
-cyanobacteriia <- summaryBy(rel_abund ~ sampleNames, data = cyanobacteriia, FUN = sum)
-cyanobacteriia <- data.frame(cyanobacteriia, row.names = cyanobacteriia[,1])
-names(cyanobacteriia)[names(cyanobacteriia) == 'rel_abund.sum'] <- 'Cyano.rel_abund.sum'
-cyanobacteriia <- merge(cyanobacteriia, sample_data(PS.500), by = "row.names")
-names(cyanobacteriia)[names(cyanobacteriia) == 'sampleNames.x'] <- 'sampleNames'
+##### Bacteroidia
+bacteroidia <- subset(Abund.final, Class == "Bacteroidia")
+bacteroidia <- summaryBy(rel_abund ~ sampleNames, data = bacteroidia, FUN = sum)
+bacteroidia <- data.frame(bacteroidia, row.names = bacteroidia[,1])
+names(bacteroidia)[names(bacteroidia) == 'rel_abund.sum'] <- 'Bactero.rel_abund.sum'
+bacteroidia <- merge(bacteroidia, sample_data(PS.500), by = "row.names")
+names(bacteroidia)[names(bacteroidia) == 'sampleNames.x'] <- 'sampleNames'
 
 #run a model
-Cyano.model<-lm(Cyano.rel_abund.sum ~ time_point + phy_group, data = cyanobacteriia)
-Anova(Cyano.model, type=2)
-plot(allEffects(Cyano.model)) # no differnce
+Bactero.model<-lm(Bactero.rel_abund.sum ~ time_point + lake + phy_group, data = bacteroidia)
+Anova(Bactero.model, type=2)
+plot(allEffects(Bactero.model)) # time marginal signif, lake and phy strong
+
+# testing environmental effects on alphaproteobacteria abundances
+FitAll.Bactero<- lm(Bactero.rel_abund.sum ~ temp_C + DO_perc + pH + DOC + elevation_m + cond + chla_ug.L, data = bacteroidia)
+step(FitAll.Bactero, direction = "both") # temp_C + DOC + elevation_m  best
+
+# best model
+Best.bactero<-lm(Bactero.rel_abund.sum ~ temp_C + DOC + elevation_m, data = bacteroidia)
+summary(Best.bactero)
+Anova(Best.bactero, type=2) # DOC signif, temp  signif, no elevation effect. Decline with DOC and temp
+plot(allEffects(Best.bactero))
+
+# plot it
+bactero_DOC <- ggplot(bacteroidia, aes(x=DOC, y=Bactero.rel_abund.sum)) +
+  geom_smooth(method = lm, color="seagreen3", alpha=0.2, fill="seagreen3")+
+  geom_point(color="seagreen4", size=1.5, alpha=0.6)+
+  ylim(c(0,1))+
+  xlab("DOC (mg/L)") + ylab("Relative Abundance") +
+  theme(axis.text.x=element_text(size=14)) + theme(axis.title.x=element_text(size=16)) +
+  theme(axis.text.y=element_text(size=14)) + theme(axis.title.y=element_text(size=16)) + 
+  ggtitle("Bacteroidia") + theme_classic()
+bactero_DOC 
+
+# temp
+summary(lm(Bactero.rel_abund.sum ~ temp_C, data = bacteroidia))
+anova((lm(Bactero.rel_abund.sum ~ temp_C, data = bacteroidia)))
+
+# plot it
+bactero_temp <- ggplot(bacteroidia, aes(x=temp_C, y=Bactero.rel_abund.sum)) +
+  geom_smooth(method = lm, color="seagreen3", alpha=0.2, fill="seagreen3")+
+  geom_point(color="seagreen4", size=1.5, alpha=0.6)+
+  ylim(c(0,1))+
+  xlab("Temperature (C)") + ylab("Relative Abundance") +
+  theme(axis.text.x=element_text(size=14)) + theme(axis.title.x=element_text(size=16)) +
+  theme(axis.text.y=element_text(size=14)) + theme(axis.title.y=element_text(size=16)) + 
+  ggtitle("Bacteroidia") + theme_classic()+
+  annotate(geom="text", x=16, y=1.0, label="Adjusted-R2=0.023, p=0.014", size=2,
+           color="black")
+bactero_temp 
+
 
 
 #### pool the plots
-Taxa.relabund.env.regr<-plot_grid(gamma_cond, alpha_DO, actino_chla, bactero_temp, ncol=4)
+Taxa.relabund.env.regr<-plot_grid(gamma_cond, alpha_DO, actino_chla, bactero_temp, ncol=4,
+                                  labels=c("C", "D", "E", "F"))
 
 ######### combine shannon with the taxa-specific
-plot_grid(multregres.plots.shannon.env, Taxa.relabund.env.regr, ncol=1, nrow=2, labels=c("A", "B"), rel_heights = c(0.8,1))
-dev.copy(pdf, "figures/Shann.env.Taxa.relabund.regr.pdf", width=12, height=7)
+plot_grid(multregres.plots.shannon.env, Taxa.relabund.env.regr, ncol=1, nrow=2, rel_heights = c(0.8,1))
+dev.copy(pdf, "figures/Fig8.Shann.env.Taxa.relabund.regr.pdf", width=12, height=7)
 dev.off()
 ```
 
@@ -2079,25 +3025,6 @@ nested=nestedtemp(aggtab)
 agg.mod<-oecosimu(round(aggtab), nsimul=1000, nestedtemp, "r2dtable", parallel=4)
 
 
-
-# separate by zoops and water
-#Merge samples by sample type
-agg.zo.wa=merge_samples(PS.500, "phy_group")
-
-#convert to dataframe
-aggtab.zo.wa=as.data.frame(otu_table(agg.zo.wa))
-
-#calculate nested temperature
-nested.zo.wa=nestedtemp(aggtab.zo.wa) 
-#nestedness temperature: 34.40586 
-#with matrix fill 0.4784979 
-
-#compare nestedtemp to randomized null distribution
-# note memory intensive
-agg.zo.wa.mod<-oecosimu(round(aggtab.zo.wa), nsimul=1000, nestedtemp, "r2dtable", parallel=4)
-
-
-
 #make a two row composite figure, reguce spacing between inner and outer margins
 pdf(file= "figures/nestedness.pdf", height=8, width=6)
 
@@ -2107,13 +3034,6 @@ par(mfrow=c(2,1), mai=c(.1,1.,1,1), oma=c(.1,1,.1,1))
 plot(nested, kind="incid", names=c(TRUE,FALSE), col=c("white", "gray48"), lwd=2, main="Zooplankton and Water", cex.main=0.8, cex.axis=0.8)
 #add stats are margin text
 mtext(expression(paste("Nested Temp=30.97, ", italic("p") ,"=0.001")), cex=0.7,)
-mtext(expression(bold('a')), side=3, line=0, at=0, cex=0.8,)
-
-
-#plot the Water and zoops nested figure, suppress taxon names
-plot(nested.zo.wa, kind="incid", names=c(TRUE,FALSE), col=c("white", "gray48"), lwd=2, main="Grouped Zooplankton Taxa and Water", cex.main=0.8, cex.axis=0.8)
-#add stats are margin text
-mtext(expression(paste("Nested Temp=30.17, ", italic("p") ,"=0.001")), cex=0.7,)
 mtext(expression(bold('a')), side=3, line=0, at=0, cex=0.8,)
 
 dev.copy(pdf, "figures/nestedness.pdf", height=8, width=6)
@@ -2137,4 +3057,86 @@ cplot1 <- ggclust(obj=hcsample,
               plot.title = element_text(face="bold", lineheight=25,hjust=0.5))
 cplot1
 ```
+
+```{r}
+library("betapart")
+mdf = psmelt(PS.500) # melt to a df
+
+
+# Extract abundance matrix from the phyloseq object
+OTU1 = as(otu_table(PS.500), "matrix")
+# transpose if necessary
+if(taxa_are_rows(PS.500)){OTU1 <- t(OTU1)}
+# Coerce to data.frame
+OTUdf = as.data.frame(OTU1)
+
+bray.part(OTU1)
+
+# Presence-absence scaling (0/1)
+PS.pa<-phyloseq_standardize_otu_abundance(PS.500, method = "pa") # convert to presence absence
+
+OTU.pa.500 = as(otu_table(PS.pa), "matrix")
+if(taxa_are_rows(PS.pa)){OTU.pa.500 <- t(OTU.pa.500)}
+OTUdf.pa = as.data.frame(OTU.pa.500)
+
+beta.dis<-beta.pair(OTUdf.pa, index.family = "sorensen")
+
+# Extract turnover,  nestedness components
+turnover <- beta.dis$beta.sim # dissimilarity matrix accounting for spatial turnover (replacement), measured as Simpson pair-wise dissimilarity
+
+nestedness <- beta.dis$beta.sne #dist object, dissimilarity matrix accounting for nestedness-resultant dissimilarity, measured as the nestedness-fraction of Sorensen pair-wise dissimilarity
+
+sor<- beta.dis$beta.sor # dist object, dissimilarity matrix accounting for total dissimilarity, measured as Sorensen pair-wise dissimilarity (a monotonic transformation of beta diversity)
+
+# seems to fit in NMDS
+
+set.seed(520)
+nmds.nest <- metaMDS(nestedness,
+          distance = "sorensen",
+          k = 4,
+          maxit = 999, 
+          wascores = TRUE)
+plot(nmds.nest, type="t")
+
+# get NMDS 1-3, we will use this later in NMDS plots
+scores.nest <- as.data.frame(scores(nmds.nest, display = "sites"))
+nmds.nest.df <- merge(sample_data(PS.pa), scores.nest, by = 'row.names', all = TRUE)
+
+# make the plot
+NMDS.nest <- ggplot(nmds.nest.df) +
+  geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = organism), size=2) +
+  #coord_fixed(ratio=0.8) +
+  scale_color_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  stat_ellipse(level=0.95, linetype = 2, linewidth=0.6, aes(x = NMDS1, y = NMDS2, color=organism)) +
+  ggtitle("Nestedness")+
+  theme_classic()
+
+# seems to fit in NMDS
+###### turnover
+set.seed(520)
+nmds.turno <- metaMDS(turnover,
+          distance = "sorensen",
+          k = 4,
+          maxit = 999, 
+          wascores = TRUE)
+plot(nmds.nest, type="t")
+
+# get NMDS 1-3, we will use this later in NMDS plots
+scores.turno <- as.data.frame(scores(nmds.turno, display = "sites"))
+nmds.turno.df <- merge(sample_data(PS.pa), scores.turno, by = 'row.names', all = TRUE)
+
+# make the plot
+NMDS.truno <- ggplot(nmds.turno.df) +
+  geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = organism), size=2) +
+  #coord_fixed(ratio=0.8) +
+  scale_color_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
+  stat_ellipse(level=0.95, linetype = 2, linewidth=0.6, aes(x = NMDS1, y = NMDS2, color=organism)) +
+  ggtitle("Turnover")+
+  theme_classic()
+
+plot_grid(NMDS.nest +guides(color="none"), NMDS.truno, ncol=2, rel_widths=c(3.7,5))
+dev.copy(pdf, "figures/nest.turnover.pdf", width=9, height=4)
+dev.off()
+```
+
 

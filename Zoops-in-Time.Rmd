@@ -570,7 +570,7 @@ detach("package:MicrobiotaProcess", TRUE) # reload later, has conflicts with phy
 # ps.prune is the final phyloseq object from pipeline, can load it in here...
 ### or load in the raw data and re-assemble
 
-ps.prune.LOCAL<-readRDS("output/reanalysis/ps.prune_local.RDS") #8056 taxa of 328 samples
+ps.prune.LOCAL<-readRDS("output/dada proc/ps.prune_local.RDS") #8056 taxa of 328 samples
 
 # idiot check: make sure to remove all mitochondria and chloroplast taxonomic IDs
 ps.prune.LOCAL <- subset_taxa(ps.prune.LOCAL, Family!= "Mitochondria" | 
@@ -766,7 +766,7 @@ table(tax_table(PS.fin)[, "Kingdom"], exclude = NULL) # 289 Archaea, 7751 Bacter
 summarize_phyloseq(PS.fin)
 
 ########### ########### ########### ########### 
-saveRDS(PS.fin, "output/reanalysis/PS.fin.RDS") # save phyloseq
+saveRDS(PS.fin, "output/dada proc/PS.fin.RDS") # save phyloseq
 ########### ########### ########### ########### 
 
 #### export each element
@@ -1078,7 +1078,7 @@ write.csv(TAXdf.rar, "output/phyloseq output_rarified/TAXdf.rar.csv")
 write.csv(SAMdf.rar, "output/phyloseq output_rarified/SAMdf.rar.csv")
 
 ########### ########### ########### ########### 
-saveRDS(PS.500, "output/reanalysis/PS.500.RDS") # save phyloseq
+saveRDS(PS.500, "output/dada proc/PS.500.RDS") # save phyloseq
 ########### ########### ########### ########### 
 
 

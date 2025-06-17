@@ -21,20 +21,25 @@ knitr::opts_chunk$set(warning=FALSE, message=FALSE, fig.align='center')
 # load packages
 if (!require("pacman")) install.packages("pacman") # for rapid install if not in library
 
+
 devtools::install_github("benjjneb/dada2", ref="v1.20") # update to most recent dada2
-devtools::install_github("zdk123/SpiecEasi")
 remotes::install_github("microbiome/microbiome")
+
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("phyloseq", "dada2")
 
 
 # use pacman to load CRAN packages missing
-pacman::p_load('knitr', 'microbiome', 'phyloseq', 'tidyr', 'tidyverse', 'knitr', 'magrittr', 'effects', 'devtools', 'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan", "cowplot", 'doBy', 'ecodist', 'phyloseqCompanion', 'pairwiseAdonis', 'glue', 'geosphere', 'data.table', 'patchwork', 'car', 'ggcorrplot', 'FactoMineR', 'devtools', 'reshape', 'lattice',  'plyr', 'magrittr', 'factoextra', 'multcompView', 'decontam', 'factoextra', 'car', 'mia', 'ade4', 'fossil', 'picante', 'reshape', 'readr', 'corrr', 'Hmisc', "MASS", "FSA", "sciplot", "decontam","BiocManager", 'ggpubr', 'ggmap', "ggordiplots", "fossil", "SpiecEasi", "igraph", "huge", "leaflet", "ggtree", "colorBlindness", "RColorBrewer","MicrobiotaProcess", "predict3d", "ggiraphExtra", "data.table", "betapart", "metagMisc", "naniar", "rstatix")
+pacman::p_load('knitr', 'microbiome', 'phyloseq', 'tidyr', 'tidyverse', 'knitr', 'magrittr', 'effects', 'devtools', 'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan", "cowplot", 'doBy', 'ecodist', 'phyloseqCompanion', 'pairwiseAdonis', 'glue', 'geosphere', 'data.table', 'patchwork', 'car', 'ggcorrplot', 'FactoMineR', 'devtools', 'reshape', 'lattice',  'plyr', 'magrittr', 'factoextra', 'multcompView', 'decontam', 'factoextra', 'car', 'mia', 'ade4', 'fossil', 'picante', 'reshape', 'readr', 'corrr', 'Hmisc', "MASS", "FSA", "sciplot", "decontam","BiocManager", 'ggpubr', 'ggmap', "ggordiplots", "fossil", "SpiecEasi", "igraph", "huge", "leaflet", "ggtree", "colorBlindness", "RColorBrewer","MicrobiotaProcess", "predict3d", "ggiraphExtra", "data.table", "betapart", "naniar", "rstatix")
 ```
 
 ## Overview
 
 ### Envrironmental Data
-- depth of the lakes for table
-```{r depth data}
+Load in the environmental field data and create plots for environmental conditions and water nutrients/chemistry across all lakes and sampling points. 
+- first remove outliers, check data structure, and add some carpintery to the metadata data frame.
+```{r depth data, results='hide'}
 field.df<-read.csv("data/field_metadata.csv")
 field.df$date.simple<-field.df$time_point
 field.df$date.simple<-recode_factor(field.df$date.simple, 
@@ -70,11 +75,10 @@ mean.depth.SE<-aggregate(depth..m~lake, function(x) sd(x) / sqrt(length(x)), dat
 colnames(mean.depth.m)<-c("lake", "depth..m")
 colnames(mean.depth.SE)<-c("lake", "depth..m.SE")
 depth.df<-cbind(mean.depth.m[1:2], mean.depth.SE[2])
-
 ```
 
 - nutrients and water chemistry
-```{r nutrients}
+```{r nutrients, fig.show='hold', fig.cap="*Fig 2.* Environmental and water chemistry metrics measured in each of the six lakes across five sampling time points."}
 ######## TDP
 
 TP.plot<-ggplot(field.df, aes(x=date.simple, y=TDP..ug.L, group=lake, color=lake)) + 
@@ -84,8 +88,6 @@ TP.plot<-ggplot(field.df, aes(x=date.simple, y=TDP..ug.L, group=lake, color=lake
   xlab("Sampling Time Point") + 
   ylab(expression(paste("TDP", ~(mu*g~L^-1), sep = "")))+ theme_classic() + 
    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-TP.plot
 
 
 ######## TDN
@@ -97,7 +99,6 @@ TN.plot<-ggplot(field.df, aes(x=date.simple, y=TDN..ug.L, group=lake, color=lake
   xlab("Sampling Time Point") + 
   ylab(expression(paste("TDN", ~(mu*g~L^-1), sep = ""))) + theme_classic() + 
    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-TN.plot
 
 
 ####### DOC
@@ -109,8 +110,6 @@ DOC.plot<-ggplot(field.df, aes(x=date.simple, y=DOC_values, group=lake, color=la
   xlab("Sampling Time Point") + 
   ylab(expression(paste("DOC", ~(mg~L^-1), sep = ""))) + theme_classic() + 
    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-DOC.plot
 
 
 ####### chlorophyll
@@ -125,8 +124,6 @@ chla.plot<- ggplot(field.df, aes(x= date.simple, y=chla..ug.L, group=lake, color
   ylab(expression(paste("Chl-a", ~(mu*g~ L^-1), sep = "")))  + theme_classic() + 
    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-chla.plot
-
 
 ######## Dissolved oxygen
 
@@ -138,8 +135,6 @@ DO.percent.plot<-ggplot(field.df, aes(x= date.simple, y=DO..perc, group=lake, co
   xlab("Sampling Time Point") + ylab("DO (%)") +
   theme(text = element_text(size = 10)) + theme_classic() + 
    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-DO.percent.plot
 
 
 ######### Conductivity
@@ -153,8 +148,6 @@ conductivity.plot<-ggplot(field.df, aes(x= date.simple,  y=cond, group=lake, col
   ylab(expression(paste("Conductivity", ~(mu*S~ cm^-1), sep = ""))) + theme_classic() + 
    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-conductivity.plot
-
 
 ###### Specific conductivity
 
@@ -167,8 +160,6 @@ spc.plot <- ggplot(field.df, aes(x= date.simple,  y=spc, group=lake, color=lake)
   ylab(expression(paste("SPC", ~(mu*S~ cm^-1)))) + theme_classic() +  
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-spc.plot
-
 
 ######## pH
 
@@ -178,8 +169,6 @@ pH.plot<-ggplot(field.df, aes(x= date.simple,  y=pH, group=lake, color=lake)) +
   coord_cartesian(ylim=c(5, 10))+
   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
   xlab("Sampling Time Point") + theme_classic() +  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-pH.plot
 
 ######## Surface temp
 
@@ -191,7 +180,6 @@ laketemp.plot<-ggplot(field.df, aes(x= date.simple,  y=temp..C, group=lake, colo
   xlab("Sampling Time Point") + 
   ylab("Temperature (°C)") + theme_classic() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-laketemp.plot
 
 ## get legend
 extract.legend.env <- get_legend(
@@ -212,7 +200,7 @@ dev.off()
 ```
 
 - air temperatures and precipitation
-```{r weather air temp and precipitation)}
+```{r weather air temp and precipitation, fig.cap="*Fig S1.*  Average air temperature and total daily precipitation across the summer season in which lake sampling occurred." }
 # air temp and rainfall
 
 weather <- read.csv('data/weather.SNARL.csv', header = TRUE)
@@ -228,8 +216,8 @@ weather.plot <- ggplot(weather, aes(x = date)) +
   scale_color_manual( values = c("rain.total" = "steelblue", "avg.temp" = "orangered"), breaks = c("avg.temp", "rain.total")
   ) + theme_classic() +
 theme(axis.text.x = element_text(angle = 90))
-weather.plot
 
+weather.plot
 dev.print(pdf, "figures/FigS1.Air.Rain.snarl.plot.pdf", width = 6, height = 6)
 dev.off()
 
@@ -237,10 +225,11 @@ dev.off()
 
 
 ### Zooplankton Community
-  
-- dot-line plot of the common taxa
-```{r testing effects on densities and plotting}
+Using the zooplankton community data, we will make plots for the density of plankton at each lake and at the different sampling points, creating a dot-line plot for each taxa. We will then make a relative abundance stacked-density plot to show the change in zooplankton community composition.  
 
+#### Plankton density
+- first, the dot-line plot of the common taxa
+```{r plot of zooplankton community dot-line, results='hide'}
 # load in the density data
 # density is the number of zoops per liter
 counts <- read.csv('data/Zoop.community.csv')
@@ -271,12 +260,10 @@ counts_mod
 # add this new column to the orginal "counts" df 
 counts$dens.row.sums <- counts_mod$sum_of_rows
 
-
 # make a new column for region category
 counts$region <- as.factor(ifelse(counts$lake == "Eastern Brook" | 
                                     counts$lake == "Serene" |
                                   counts$lake == "Convict", "South", "North"))
-
 
 #### Total densities
 overall.dens.plot <- ggplot(counts, aes(x = date.simple, y = dens.row.sums, color = lake, group = lake)) +
@@ -285,22 +272,32 @@ overall.dens.plot <- ggplot(counts, aes(x = date.simple, y = dens.row.sums, colo
   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+ 
   labs( x = "Sampling Time Point", y = "Total Zooplankton Density (#/L)") +theme_classic() + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
 
+- test for differences in zooplankton densities across lakes and time points.
+- These stats are in *Table S2* (bottom)
+```{r testing effects on densities and plotting, results='hide', collapse=TRUE}
 # model
 tot.dens.mod<-lm(dens.row.sums ~ time_point + lake, data = counts)
 tot.dens.aov<-Anova(tot.dens.mod, type=2) #time point trend
-plot(allEffects(tot.dens.mod))
+#plot(allEffects(tot.dens.mod))
 
 # posthoc just looking at time point, a trend
 tot.dens.ph<-emmeans(tot.dens.mod, pairwise~time_point)
 multcomp::cld(tot.dens.ph, Letters=letters)
 
 stepAIC(lm(dens.row.sums ~ latitude + elevation_m + DO..perc + log(DOC) + chla_ug.L + pH + cond + temp..C, data = counts))
+```
+```{r best model zoop densities}
 tot.zoop.dens.mod<-lm(dens.row.sums ~ latitude + elevation_m + DO..perc + cond + temp..C, data = counts)
 tot.zoop.dens.aov<-Anova(tot.zoop.dens.mod, type=2)
-plot(allEffects(lm(dens.row.sums ~ temp..C, data = counts)))
+tot.zoop.dens.aov
+#plot(allEffects(lm(dens.row.sums ~ temp..C, data = counts)))
+```
 
-
+- Now, test for differences in density of individual taxa
+- We will look at Daphnia, calanoid copepods, cyclopoid copepods, nauplii, asplanchna,and other less common groups
+```{r testing effects for individual taxa, results='hide'}
 ##### Daphnia
 daphnia.dens.plot <- ggplot(counts, aes(x = date.simple, y = daphnia.dens, color = lake, group = lake)) +
   geom_point(size = 2) + 
@@ -486,8 +483,10 @@ chydorus.dens.plot <- ggplot(counts, aes(x = date.simple, y = chy.dens, color = 
   theme_classic()
 
 Anova(lm(chy.dens ~ time_point + lake, data = counts)) # no effect
+```
 
-
+- Compile the dot-line plot for all common zooplankton taxa
+```{r combine zooplankton plot, results='hide', fig.cap="*Fig S3.* Changes in zooplankton densities across six mountain lakes across five sampling time points"}
 ####### make aggregated plot
 combined.dens.plot <- ggarrange(
                            overall.dens.plot + theme(axis.title.y =element_text(size=8))+ guides(color="none"),
@@ -505,8 +504,9 @@ dev.off()
 
 ```
 
-- area stacked bar plot
-```{r stacked bar plot}
+#### Plankton relative abundance
+- Create a stacked density plot for the zooplankton relative abundance
+```{r stacked density plot, results="hide", fig.cap="*Fig 3.* Relative abundances of zooplankton taxa (as proportion of total density per liter) in communities of six mountain lakes in California’s Eastern Sierra Nevada across five sampling time points."}
 long_counts <- tidyr::pivot_longer(data = counts, cols = c(23:34), 
                                    names_to = "Taxa", values_to= "Density")
 long_counts <- as.data.frame(long_counts)
@@ -518,8 +518,8 @@ is.na(long_counts)<-sapply(long_counts, is.infinite)
 long_counts[is.na(long_counts)]<-0
 
 # try with just logging the densities ("value"), still an issue of zeros but let's just look
-mod2<-lm(log(Density+0.001) ~Taxa+time_point*lake, data = long_counts)
-Anova(mod2, type=3)
+#mod2<-lm(log(Density+0.001) ~Taxa+time_point*lake, data = long_counts)
+#Anova(mod2, type=3)
 
 long_counts$Time.cont<-as.numeric(long_counts$time_point)
 
@@ -536,8 +536,10 @@ dev.off()
 
 ```
 
-- zooplankton shannon stats
-```{r stats on zoops}
+Run models to test for differences in zooplankton community, using Shannon diversity.  
+- First look for the model that best explains the data using StepAIC. 
+- These stats are in *Table S2* (top)
+```{r stats on zoops, results='hide', collapse=TRUE}
 # Shannon diversity
 zoop.comm.div <- as.data.frame(vegan::diversity(counts[,c(23:34)], index="shannon"))
 zoop.comm.div <- cbind(counts, zoop.comm.div)
@@ -547,16 +549,14 @@ zoop.shan.mod<-lm(Shannon ~ time_point + lake, data = zoop.comm.div)
 zoop.shan.aov<-Anova(zoop.shan.mod, type=2)
 # no effect of time or lake on Shannon diversity of zoop community samples (p> 0.425)
 
-stepAIC(lm(Shannon ~ latitude + elevation_m + DO..perc + log(DOC) + chla_ug.L + pH + cond + temp..C, data = zoop.comm.div)) 
+stepAIC(lm(Shannon ~ latitude + elevation_m + DO..perc + log(DOC) + chla_ug.L + pH + cond + temp..C, data = zoop.comm.div))
+```
+```{r best model zoopl RA}
 shan.zoop.mod<-lm(Shannon ~ latitude + cond + temp..C, data = zoop.comm.div)
 shan.zoop.aov<-Anova(shan.zoop.mod, type=2)
 plot(allEffects(lm(Shannon ~ temp..C, data = zoop.comm.div)))
 
-#ggscatter(zoop.comm.div, x = "temp..C", y = "Shannon",
-#          add = "reg.line", conf.int = TRUE,  xlim =c(12,22), ylim=c(0.5,2.5),
-#          cor.coef = TRUE, cor.method = "pearson", cor.coef.coord = c(12.5,2.4),
-#          xlab = "Temperature", ylab = "Zooplankton Community Shannon Diversity")
-
+shan.zoop.aov
 ```
 
 
@@ -2973,540 +2973,3 @@ plot_grid(multregres.plots.shannon.env.wat.zoop, Taxa.relabund.env.regr, ncol=1,
 dev.copy(pdf, "figures/Fig5.Shann.env.Taxa.relabund.regr_rev.pdf", width=12, height=10)
 dev.off()
 ```
-
-
-```{r venn diagrams}
-ASV.tab<-as.data.frame(otu_table(PS.500))
-ASV.samp<-sample_data(PS.500)
-
-ASV.data.all<-as.data.frame(cbind(ASV.samp,ASV.tab))
-
-remotes::install_github("Russel88/MicEco")
-library("MicEco")
-
-# venns of all samples by time
-All.venn.time<-ps_venn(
-  PS.500,
-  "time_point",
-  fraction = 0,
-  weight = FALSE,
-  relative = TRUE,
-  plot = TRUE,
-  main="All times"
-)
-
-# venns of all phy
-All.venn.phy<-ps_venn(
-  PS.500,
-  "phy_group",
-  fraction = 0,
-  weight = FALSE,
-  relative = TRUE,
-  plot = TRUE,
-  main="All times"
-)
-
-# venn for all water
-All.venn.water.time<-ps_venn(
-  wat.phylo,
-  "time_point",
-  plot = TRUE,
-  #fill= c("lightblue", "orange"),
-  main="Water by time"
-)
-
-
-zoops<-ps_venn(
-  zoop.phylo,
-  "organism",
-  plot = TRUE,
-  main="Zoops"
-)
-
-# venns of all phy
-All.venn.org<-ps_venn(
-  PS.500,
-  "organism",
-  plot = TRUE,
-  quantities = list(type = "counts", cex = 1),
-  main="All times"
-)
-
-
-# venn for all daphnia
-PS.daph = subset_samples(PS.500, organism=="Daphnia")
-PS.daph <- prune_taxa(taxa_sums(PS.daph) > 0, PS.daph)
-
-PS.daph.south = subset_samples(PS.daph, basin=="South")
-PS.daph.south <- prune_taxa(taxa_sums(PS.daph.south) > 0, PS.daph.south)
-
-PS.daph.north = subset_samples(PS.daph, basin=="North")
-PS.daph.north <- prune_taxa(taxa_sums(PS.daph.north) > 0, PS.daph.north)
-
-#see the basin effects
-richness.lake <- plot_richness(PS.daph, x="lake", measures=c("Observed", "Shannon"), color="lake") +
-  labs(y= "Alpha Diversity Measure", x = "lake") + theme_bw() + 
-  geom_boxplot(aes(fill=lake), alpha=0.7) +
-  geom_point(aes(color=lake), alpha=0.5) +
-  theme(axis.text.x=element_text(size=9)) + theme(strip.text.x = element_text(size = 12))
-
-daph.S<-ps_venn(
-  PS.daph.south,
-  "lake",
-  fraction = 0,
-  weight = FALSE,
-  relative = TRUE,
-  plot = TRUE,
-  main="Daphnia by South-lake"
-)
-
-daph.N<-ps_venn(
-  PS.daph.north,
-  "lake",
-  fraction = 0,
-  weight = FALSE,
-  relative = TRUE,
-  plot = TRUE,
-  main="Daphnia by North-lake"
-)
-
-daph.basin<-ps_venn(
-  PS.daph,
-  "basin",
-  fraction = 0,
-  weight = FALSE,
-  relative = FALSE,
-  plot = TRUE,
-  main="Daphnia by Basin"
-)
-
-g<-plot_grid(All.venn.time, All.venn.water.time, All.venn.phy,
-             daph.N, daph.S, daph.basin, ncol=3)
-g
-dev.copy(pdf, "figures/Venns.daph.pdf", height=8, width=12)
-dev.off()
-
-#########
-Euler.phy<-ps_euler(
-  PS.500,
-  "phy_group",
-  shape = "circle",
-  quantities = list(type=c("percent","counts"), font = 1, cex = 0.7), labels = list(cex = 0.9),
-  plot = TRUE
-)
-
-Venn.phy<-ps_venn(
-  PS.500,
-  "phy_group",
-  quantities = list(type=c("percent","counts"), font = 1, cex = 0.7), labels = list(cex = 0.9),
-  plot = TRUE
-)
-
-Venn.zoop<-ps_venn(
-  zoop.phylo,
-  "organism",
-  quantities = list(type=c("percent","counts"), font = 1, cex = 0.7), labels = list(cex = 0.9),
-  plot = TRUE
-)
-
-g2<-plot_grid(Euler.phy, Venn.zoop,
-            ncol=2)
-g2
-dev.copy(pdf, "figures/Euler.Venn.phy.zoop.pdf", height=7, width=10)
-dev.off()
-
-
-```
-
-look for core taxa for Daphnia
-```{r core taxa daphnia, eval=FALSE}
-# https://microbiome.github.io/tutorials/Core.html
-
-#Zooplankton core taxa
-daph.phylo.rar<-subset_samples(PS.500.hell, organism=="Daphnia")
-#keep only taxa with positive sums
-daph.phylo.pos <- prune_taxa(taxa_sums(daph.phylo.rar) > 0, daph.phylo.rar)
-# make compositional, relative abundance
-pseq.rel <- microbiome::transform(daph.phylo.pos, "compositional")
-
-taxa_names(pseq.rel) # shows ASVs
-
-#If you only need the names of the core taxa, do as follows. This returns the taxa that exceed the given prevalence and detection thresholds.
-core.taxa.standard <- core_members(pseq.rel, detection = 0.0001, prevalence = 50/100)
-
-colnames(tax_table(pseq.rel))[1] = "Domain" #rename Kingdom to Domain for the microbiome package needs
-pseq.rel.f <- microbiome::add_besthit(pseq.rel) # adds taxonomy to ASV names
-
-core.taxa.standard <- core_members(pseq.rel.f, detection = 0.0001, prevalence = 50/100)
-
-#full phyloseq
-pseq.core <- core(pseq.rel.f, detection = 0.0001, prevalence = .5)
-core.taxa <- taxa(pseq.core)
-class(core.taxa)
-
-# get the taxonomy data
-tax.mat <- tax_table(pseq.core)
-tax.df <- as.data.frame(tax.mat)
-
-# add the OTus to last column
-tax.df$OTU <- rownames(tax.df)
-
-# select taxonomy of only 
-# those OTUs that are core memebers based on the thresholds that were used.
-core.taxa.class <- dplyr::filter(tax.df, rownames(tax.df) %in% core.taxa)
-knitr::kable(head(core.taxa.class))
-
-
-# With compositional (relative) abundances
-det <- c(0, 0.1, 0.5, 2, 5, 20)/100
-prevalences <- seq(.05, 1, .05)
-
-plot_core(pseq.rel.f, prevalences = prevalences, 
-          detections = det, plot.type = "lineplot") + 
-  xlab("Relative Abundance (%)") + 
-  theme_bw()
-
-
-# Core with compositionals:
-prevalences <- seq(.05, 1, .05)
-detections <- round(10^seq(log10(1e-2), log10(.5), length = 10), 3)
-
-#Deletes "ASV" from taxa_names, e.g. ASV1 --> 1
-#taxa_names(ps.m3.rel) = taxa_names(ps.m3.rel) %>% str_replace("ASV", "")
-# Also define gray color palette
-gray <- gray(seq(0,1,length=5))
-
-daph.core <- plot_core(pseq.rel.f,
-  plot.type = "heatmap",
-  colours = gray,
-  prevalences = prevalences,
-  detections = detections, min.prevalence = .5) +
-  xlab("Detection Threshold (Relative Abundance (%))") + theme_bw() + ylab("ASVs")
-daph.core
-
-## make in color
-library(viridis)
-library(RColorBrewer)
-
-print(daph.core + scale_fill_viridis())
-dev.print(pdf, "figures/Daph.core.pdf", height=6, width=6)
-dev.off()
-```
-
-look for core taxa for Calanoids
-```{r core calan, eval=FALSE}
-#Zooplankton core taxa
-calan.phylo.rar<-subset_samples(PS.500.hell, organism=="Calanoid")
-#keep only taxa with positive sums
-calan.phylo.pos <- prune_taxa(taxa_sums(calan.phylo.rar) > 0, calan.phylo.rar)
-# make compositional, relative abundance
-pseq.rel <- microbiome::transform(calan.phylo.pos, "compositional")
-
-taxa_names(pseq.rel) # shows ASVs
-
-#If you only need the names of the core taxa, do as follows. This returns the taxa that exceed the given prevalence and detection thresholds.
-core.taxa.standard <- core_members(pseq.rel, detection = 0.0001, prevalence = 50/100)
-
-colnames(tax_table(pseq.rel))[1] = "Domain" #rename Kingdom to Domain for the microbiome package needs
-pseq.rel.f <- microbiome::add_besthit(pseq.rel) # adds taxonomy to ASV names
-
-core.taxa.standard <- core_members(pseq.rel.f, detection = 0.0001, prevalence = 50/100)
-
-#full phyloseq
-pseq.core <- core(pseq.rel.f, detection = 0.0001, prevalence = .5)
-core.taxa <- taxa(pseq.core)
-class(core.taxa)
-
-# get the taxonomy data
-tax.mat <- tax_table(pseq.core)
-tax.df <- as.data.frame(tax.mat)
-
-# add the OTus to last column
-tax.df$OTU <- rownames(tax.df)
-
-# select taxonomy of only 
-# those OTUs that are core memebers based on the thresholds that were used.
-core.taxa.class <- dplyr::filter(tax.df, rownames(tax.df) %in% core.taxa)
-knitr::kable(head(core.taxa.class))
-
-
-# With compositional (relative) abundances
-det <- c(0, 0.1, 0.5, 2, 5, 20)/100
-prevalences <- seq(.05, 1, .05)
-
-plot_core(pseq.rel.f, prevalences = prevalences, 
-          detections = det, plot.type = "lineplot") + 
-  xlab("Relative Abundance (%)") + 
-  theme_bw()
-
-
-# Core with compositionals:
-prevalences <- seq(.05, 1, .05)
-detections <- round(10^seq(log10(1e-2), log10(.4), length = 10), 3)
-
-#Deletes "ASV" from taxa_names, e.g. ASV1 --> 1
-#taxa_names(ps.m3.rel) = taxa_names(ps.m3.rel) %>% str_replace("ASV", "")
-# Also define gray color palette
-gray <- gray(seq(0,1,length=5))
-
-calan.core <- plot_core(pseq.rel.f,
-  plot.type = "heatmap",
-  colours = gray,
-  prevalences = prevalences,
-  detections = detections, min.prevalence = .5) +
-  xlab("Detection Threshold (Relative Abundance (%))")
-
-calan.core <- calan.core + theme_bw() + ylab("ASVs")
-calan.core
-
-## make in color
-library(viridis)
-library(RColorBrewer)
-
-print(calan.core + scale_fill_viridis())
-dev.print(pdf, "figures/Calan.core.pdf", height=6, width=6)
-dev.off()
-```
-
-look for core taxa for Cyclopoids
-```{r cyclo core,  eval=FALSE}
-#Zooplankton core taxa
-cyclop.phylo.rar<-subset_samples(PS.500.hell, organism=="Cyclopoid")
-#keep only taxa with positive sums
-cyclop.phylo.pos <- prune_taxa(taxa_sums(cyclop.phylo.rar) > 0, cyclop.phylo.rar)
-# make compositional, relative abundance
-pseq.rel <- microbiome::transform(cyclop.phylo.pos, "compositional")
-
-taxa_names(pseq.rel) # shows ASVs
-
-#If you only need the names of the core taxa, do as follows. This returns the taxa that exceed the given prevalence and detection thresholds.
-core.taxa.standard <- core_members(pseq.rel, detection = 0.0001, prevalence = 50/100)
-
-colnames(tax_table(pseq.rel))[1] = "Domain" #rename Kingdom to Domain for the microbiome package needs
-pseq.rel.f <- microbiome::add_besthit(pseq.rel) # adds taxonomy to ASV names
-
-core.taxa.standard <- core_members(pseq.rel.f, detection = 0.0001, prevalence = 50/100)
-
-#full phyloseq
-pseq.core <- core(pseq.rel.f, detection = 0.0001, prevalence = .5)
-core.taxa <- taxa(pseq.core)
-class(core.taxa)
-
-# get the taxonomy data
-tax.mat <- tax_table(pseq.core)
-tax.df <- as.data.frame(tax.mat)
-
-# add the OTus to last column
-tax.df$OTU <- rownames(tax.df)
-
-# select taxonomy of only 
-# those OTUs that are core memebers based on the thresholds that were used.
-core.taxa.class <- dplyr::filter(tax.df, rownames(tax.df) %in% core.taxa)
-knitr::kable(head(core.taxa.class))
-
-
-# With compositional (relative) abundances
-det <- c(0, 0.1, 0.5, 2, 5, 20)/100
-prevalences <- seq(.05, 1, .05)
-
-plot_core(pseq.rel.f, prevalences = prevalences, 
-          detections = det, plot.type = "lineplot") + 
-  xlab("Relative Abundance (%)") + 
-  theme_bw()
-
-
-# Core with compositionals:
-prevalences <- seq(.05, 1, .05)
-detections <- round(10^seq(log10(1e-2), log10(.3), length = 10), 3)
-
-#Deletes "ASV" from taxa_names, e.g. ASV1 --> 1
-#taxa_names(ps.m3.rel) = taxa_names(ps.m3.rel) %>% str_replace("ASV", "")
-# Also define gray color palette
-gray <- gray(seq(0,1,length=5))
-
-cyclop.core <- plot_core(pseq.rel.f,
-  plot.type = "heatmap",
-  colours = gray,
-  prevalences = prevalences,
-  detections = detections, min.prevalence = .5) +
-  xlab("Detection Threshold (Relative Abundance (%))")
-
-cyclop.core <- cyclop.core + theme_bw() + ylab("ASVs")
-cyclop.core
-
-## make in color
-library(viridis)
-library(RColorBrewer)
-
-print(cyclop.core + scale_fill_viridis())
-dev.print(pdf, "figures/Cyclop.core.pdf", height=6, width=6)
-dev.off()
-```
-
-look for core taxa for Daphnia by genus
-```{r core taxa daphnia by genus,  eval=FALSE}
-###################### by Genus
-###########
-ps.gen <- aggregate_taxa(daph.phylo.pos, "Genus")
-
-# Check if any taxa with no genus classification. aggregate_taxa will merge all unclassified to Unknown
-any(taxa_names(ps.gen) == "Unknown")
-# Remove Unknown
-ps.gen <- subset_taxa(ps.gen, Genus!="Unknown")
-
-# make compositional, relative abundance
-pseq.rel.gen <- microbiome::transform(ps.gen, "compositional")
-
-#keep only taxa with positive sums
-pseq.rel.gen <- prune_taxa(taxa_sums(pseq.rel.gen) > 0, pseq.rel.gen)
-
-#### setup for plot
-prevalences <- seq(.05, 1, .05) # heatmap scale
-detections <- round(10^seq(log10(1e-3), log10(.3), length = 10), 3)
-
-daph.genera.core <- plot_core(pseq.rel.gen, 
-                plot.type = "heatmap", 
-                colours = rev(brewer.pal(5, "RdBu")),
-                prevalences = prevalences,
-                detections = detections, min.prevalence = 0.5) +
-    xlab("Detection Threshold (Relative Abundance (%))") + theme_bw() + ylab("ASVs")
-daph.genera.core
-dev.print(pdf, "figures/daph.genera.core.pdf", height=5, width=7)
-dev.off()
-
-```
-
-```{r nestedness, eval=FALSE}
-#nestedness
-
-#Merge samples by sample type
-agg=merge_samples(PS.500, "organism")
-
-#convert to dataframe
-aggtab=as.data.frame(otu_table(agg))
-
-#calculate nested temperature
-nested=nestedtemp(aggtab) 
-#nestedness temperature: 30.96868 
-#with matrix fill 0.3309509 
-
-#compare nestedtemp to randomized null distribution
-# note memory intensive
-agg.mod<-oecosimu(round(aggtab), nsimul=1000, nestedtemp, "r2dtable", parallel=4)
-
-
-#make a two row composite figure, reguce spacing between inner and outer margins
-pdf(file= "figures/nestedness.pdf", height=8, width=6)
-
-par(mfrow=c(2,1), mai=c(.1,1.,1,1), oma=c(.1,1,.1,1))
-
-#plot the Organism nestedness nested figure, suppress taxon names
-plot(nested, kind="incid", names=c(TRUE,FALSE), col=c("white", "gray48"), lwd=2, main="Zooplankton and Water", cex.main=0.8, cex.axis=0.8)
-#add stats are margin text
-mtext(expression(paste("Nested Temp=30.97, ", italic("p") ,"=0.001")), cex=0.7,)
-mtext(expression(bold('a')), side=3, line=0, at=0, cex=0.8,)
-
-dev.copy(pdf, "figures/nestedness.pdf", height=8, width=6)
-dev.off()
-
-```
-
-```{r tree}
-library("MicrobiotaProcess")
-hcsample <- get_clust(obj=PS.500, distmethod="bray",
-                      method=NULL, hclustmethod="average")
-# rectangular layout
-cplot1 <- ggclust(obj=hcsample,
-                  layout = "rectangular",
-                  pointsize=1,
-                  fontsize=0,
-                  factorNames=c("organism")
-              ) +
-              scale_color_manual(values=c("coral", "gold", "dodgerblue")) +
-              theme_tree2(legend.position="right",
-              plot.title = element_text(face="bold", lineheight=25,hjust=0.5))
-cplot1
-```
-
-```{r}
-library("betapart")
-mdf = psmelt(PS.500) # melt to a df
-
-
-# Extract abundance matrix from the phyloseq object
-OTU1 = as(otu_table(PS.500), "matrix")
-# transpose if necessary
-if(taxa_are_rows(PS.500)){OTU1 <- t(OTU1)}
-# Coerce to data.frame
-OTUdf = as.data.frame(OTU1)
-
-bray.part(OTU1)
-
-# Presence-absence scaling (0/1)
-PS.pa<-phyloseq_standardize_otu_abundance(PS.500, method = "pa") # convert to presence absence
-
-OTU.pa.500 = as(otu_table(PS.pa), "matrix")
-if(taxa_are_rows(PS.pa)){OTU.pa.500 <- t(OTU.pa.500)}
-OTUdf.pa = as.data.frame(OTU.pa.500)
-
-beta.dis<-beta.pair(OTUdf.pa, index.family = "sorensen")
-
-# Extract turnover,  nestedness components
-turnover <- beta.dis$beta.sim # dissimilarity matrix accounting for spatial turnover (replacement), measured as Simpson pair-wise dissimilarity
-
-nestedness <- beta.dis$beta.sne #dist object, dissimilarity matrix accounting for nestedness-resultant dissimilarity, measured as the nestedness-fraction of Sorensen pair-wise dissimilarity
-
-sor<- beta.dis$beta.sor # dist object, dissimilarity matrix accounting for total dissimilarity, measured as Sorensen pair-wise dissimilarity (a monotonic transformation of beta diversity)
-
-# seems to fit in NMDS
-
-set.seed(520)
-nmds.nest <- metaMDS(nestedness,
-          distance = "sorensen",
-          k = 4,
-          maxit = 999, 
-          wascores = TRUE)
-plot(nmds.nest, type="t")
-
-# get NMDS 1-3, we will use this later in NMDS plots
-scores.nest <- as.data.frame(scores(nmds.nest, display = "sites"))
-nmds.nest.df <- merge(sample_data(PS.pa), scores.nest, by = 'row.names', all = TRUE)
-
-# make the plot
-NMDS.nest <- ggplot(nmds.nest.df) +
-  geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = organism), size=2) +
-  #coord_fixed(ratio=0.8) +
-  scale_color_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
-  stat_ellipse(level=0.95, linetype = 2, linewidth=0.6, aes(x = NMDS1, y = NMDS2, color=organism)) +
-  ggtitle("Nestedness")+
-  theme_classic()
-
-# seems to fit in NMDS
-###### turnover
-set.seed(520)
-nmds.turno <- metaMDS(turnover,
-          distance = "sorensen",
-          k = 4,
-          maxit = 999, 
-          wascores = TRUE)
-plot(nmds.nest, type="t")
-
-# get NMDS 1-3, we will use this later in NMDS plots
-scores.turno <- as.data.frame(scores(nmds.turno, display = "sites"))
-nmds.turno.df <- merge(sample_data(PS.pa), scores.turno, by = 'row.names', all = TRUE)
-
-# make the plot
-NMDS.truno <- ggplot(nmds.turno.df) +
-  geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = organism), size=2) +
-  #coord_fixed(ratio=0.8) +
-  scale_color_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
-  stat_ellipse(level=0.95, linetype = 2, linewidth=0.6, aes(x = NMDS1, y = NMDS2, color=organism)) +
-  ggtitle("Turnover")+
-  theme_classic()
-
-plot_grid(NMDS.nest +guides(color="none"), NMDS.truno, ncol=2, rel_widths=c(3.7,5))
-dev.copy(pdf, "figures/nest.turnover.pdf", width=9, height=4)
-dev.off()
-```
-
-

@@ -14,9 +14,10 @@ output:
 editor_options: 
   chunk_output_type: console
 ---
+
 ```{r global options, results="hide", warning=FALSE, message=FALSE}
 if (!require('knitr')) install.packages('knitr'); library('knitr')
-knitr::opts_chunk$set(warning=FALSE, message=FALSE, fig.align='center')
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, fig.align='center', collapse=TRUE, cache=TRUE)
 
 # load packages
 if (!require("pacman")) install.packages("pacman") # for rapid install if not in library
@@ -25,16 +26,29 @@ if (!require("pacman")) install.packages("pacman") # for rapid install if not in
 devtools::install_github("benjjneb/dada2", ref="v1.20") # update to most recent dada2
 remotes::install_github("microbiome/microbiome")
 
-if (!require("BiocManager", quietly = TRUE))
+if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
-BiocManager::install("phyloseq", "dada2")
 
+if (!require("phyloseq", quietly = TRUE))
+    BiocManager::install("phyloseq",  quietly = TRUE)
+
+if (!require("dada2", quietly = TRUE))
+    BiocManager::install("dada2", quietly = TRUE)
 
 # use pacman to load CRAN packages missing
 pacman::p_load('knitr', 'microbiome', 'phyloseq', 'tidyr', 'tidyverse', 'knitr', 'magrittr', 'effects', 'devtools', 'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan", "cowplot", 'doBy', 'ecodist', 'phyloseqCompanion', 'pairwiseAdonis', 'glue', 'geosphere', 'data.table', 'patchwork', 'car', 'ggcorrplot', 'FactoMineR', 'devtools', 'reshape', 'lattice',  'plyr', 'magrittr', 'factoextra', 'multcompView', 'decontam', 'factoextra', 'car', 'mia', 'ade4', 'fossil', 'picante', 'reshape', 'readr', 'corrr', 'Hmisc', "MASS", "FSA", "sciplot", "decontam","BiocManager", 'ggpubr', 'ggmap', "ggordiplots", "fossil", "SpiecEasi", "igraph", "huge", "leaflet", "ggtree", "colorBlindness", "RColorBrewer","MicrobiotaProcess", "predict3d", "ggiraphExtra", "data.table", "betapart", "naniar", "rstatix")
 ```
 
 ## Overview
+
+### Map
+We samples 6 locations in the Eastern Sierra Nevada Mountains throughout the summer season. The map of lakes and their proximity can be seen below.
+
+<center>  
+  
+![**Image**. Sierra Nevada Lakes sampled for zooplankton microbiomes and environmental conditons across a summer season.](output/maps/Fig1.map.3 panel2.jpg){width=80%}
+ 
+</center>  
 
 ### Envrironmental Data
 Load in the environmental field data and create plots for environmental conditions and water nutrients/chemistry across all lakes and sampling points. 
@@ -274,25 +288,30 @@ overall.dens.plot <- ggplot(counts, aes(x = date.simple, y = dens.row.sums, colo
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
 
-- test for differences in zooplankton densities across lakes and time points.
-- These stats are in *Table S2* (bottom)
+Test for differences in zooplankton densities across lakes and time points.  
+*Note* Interactions aren't approproate for these models since there is only n=1 in each lake/time combination. We therefore use Type II SS of main effects.
 ```{r testing effects on densities and plotting, results='hide', collapse=TRUE}
-# model
+### Lake and time effects
 tot.dens.mod<-lm(dens.row.sums ~ time_point + lake, data = counts)
-tot.dens.aov<-Anova(tot.dens.mod, type=2) #time point trend
+tot.dens.site.time.aov<-Anova(tot.dens.mod, type=2) #time point trend
 #plot(allEffects(tot.dens.mod))
 
 # posthoc just looking at time point, a trend
 tot.dens.ph<-emmeans(tot.dens.mod, pairwise~time_point)
 multcomp::cld(tot.dens.ph, Letters=letters)
 
+### Env. effects
 stepAIC(lm(dens.row.sums ~ latitude + elevation_m + DO..perc + log(DOC) + chla_ug.L + pH + cond + temp..C, data = counts))
-```
-```{r best model zoop densities}
-tot.zoop.dens.mod<-lm(dens.row.sums ~ latitude + elevation_m + DO..perc + cond + temp..C, data = counts)
-tot.zoop.dens.aov<-Anova(tot.zoop.dens.mod, type=2)
-tot.zoop.dens.aov
+tot.zoop.dens.env.mod<-lm(dens.row.sums ~ latitude + elevation_m + DO..perc + cond + temp..C, data = counts)
+tot.zoop.dens.env.aov<-Anova(tot.zoop.dens.env.mod, type=2)
 #plot(allEffects(lm(dens.row.sums ~ temp..C, data = counts)))
+```
+
+- Best models are below for total zooplankton densities by Site x Time, and by environmental conditons. 
+- These are in *(BOTTOM) Table S1 and S2*.
+```{r best model zoop densities}
+tot.dens.site.time.aov
+tot.zoop.dens.env.aov
 ```
 
 - Now, test for differences in density of individual taxa
@@ -536,34 +555,39 @@ dev.off()
 
 ```
 
-Run models to test for differences in zooplankton community, using Shannon diversity.  
-- First look for the model that best explains the data using StepAIC. 
-- These stats are in *Table S2* (top)
+Run models to test for differences in zooplankton community, using Shannon diversity.  First look for the model that best explains the data using StepAIC, then run ANOVA on the best model.  
+*Note* Interactions aren't approproate for these models since there is only n=1 in each lake/time combination. We therefore use Type II SS of main effects.
 ```{r stats on zoops, results='hide', collapse=TRUE}
 # Shannon diversity
 zoop.comm.div <- as.data.frame(vegan::diversity(counts[,c(23:34)], index="shannon"))
 zoop.comm.div <- cbind(counts, zoop.comm.div)
 names(zoop.comm.div)[47] <- "Shannon"
 
-zoop.shan.mod<-lm(Shannon ~ time_point + lake, data = zoop.comm.div)
-zoop.shan.aov<-Anova(zoop.shan.mod, type=2)
+zoop.shan.lake.time.mod<-lm(Shannon ~ time_point + lake, data = zoop.comm.div)
+zoop.shan.lake.time.aov<-Anova(zoop.shan.lake.time.mod, type=2)
 # no effect of time or lake on Shannon diversity of zoop community samples (p> 0.425)
 
 stepAIC(lm(Shannon ~ latitude + elevation_m + DO..perc + log(DOC) + chla_ug.L + pH + cond + temp..C, data = zoop.comm.div))
-```
-```{r best model zoopl RA}
-shan.zoop.mod<-lm(Shannon ~ latitude + cond + temp..C, data = zoop.comm.div)
-shan.zoop.aov<-Anova(shan.zoop.mod, type=2)
-plot(allEffects(lm(Shannon ~ temp..C, data = zoop.comm.div)))
 
-shan.zoop.aov
+shan.zoop.env.mod<-lm(Shannon ~ latitude + cond + temp..C, data = zoop.comm.div)
+shan.zoop.env.aov<-Anova(shan.zoop.env.mod, type=2)
+plot(allEffects(lm(Shannon ~ temp..C, data = zoop.comm.div)))
+```
+
+- Best models are below for Shannon Diversity by Site x Time, and Shannon Diveristy x environmental conditons. 
+- These are in *(TOP) Table S1 and S2*.
+```{r best model zoopl RA}
+zoop.shan.lake.time.aov
+shan.zoop.env.aov
 ```
 
 
 ### Microbiome Data 
-- Import Phyloseq
+Import Phyloseq data from DADA pipeline. The data will need to be cleaned and organized so that it can be processed for downstram analysis.
 - Modify the metadata to meet downstream needs
-```{r loading in data and modifying metadata}
+- Once data has been cleaned up, export new phyloseq objects and their parts
+- Ultimate product is the non-rarified phyloseq object that can be processed in subsequent chunks
+```{r loading in data and modifying metadata, results='hide', message='hide'}
 ##########################################################
 detach("package:MicrobiotaProcess", TRUE) # reload later, has conflicts with phyloseq
 
@@ -793,9 +817,11 @@ write.csv(SAMdf, "output/phyloseq output/SAMdf.nonrar.csv")
 microbiome::summarize_phyloseq(PS.fin)
 ```
 
-Inspect the run: what is the # of reads/sample? A bit over inflated due to water being so deeply sequenced, but log-read sum gives us a good picture
-```{r total reads by species boxplots raw data}
-#### inspect plots
+
+```{r total reads by species boxplots raw data, resuls='hide'}
+#### Inspect the run: 
+# what is the # of reads/sample? 
+# A bit over inflated due to water being so deeply sequenced, but log-read sum gives us a good picture
 
 # reads per sample
 read.sample<-ggplot(MetaD.SQ.Env, aes(x=sample_type, y=read.sum, color=organism)) + geom_boxplot() + theme_bw() +
@@ -814,7 +840,7 @@ ggplot(MetaD.SQ.Env[(MetaD.SQ.Env$sample_type=="Zooplankton"),], aes(x=sample_ty
                               "dodgerblue", "violet", "wheat3"))
 ```
 
-Now look at read depth and rarefaction curves to determine how to standardize sampling depth
+- Now look at read depth and rarefaction curves to determine how to standardize sampling depth
 ```{r Read depth plots and rarefaction curves, eval=FALSE}
 
 # Histogram of sample read counts
@@ -1027,7 +1053,7 @@ detach("package:MicrobiotaProcess", TRUE)
 After running the tests of rarifying data transformation influence our data (and seeing the low sample size for Bosmina and Ceriodaphnia), we will proceed with a rarified dataset and drop these two species. The variation in DCA shows we can proceed with assumption of heterogeneous distributions and use RDA/CCA, use PCoA/NMDS with Bray-Curits, or proceed with rank-based ordination approached (NMDS) with fewer axises.
 
 We will use rarified data, and demonstrate ordination differences using PCoA with unweighted unifrac distance (accounting for abundance and phylogeny) and NMDS-Bray Crutis for maximal distance between groups
-```{r final phyloseq}
+```{r final phyloseq, results='hide'}
 ################### final phyloseq object based on the above
 
 # give it a redo now that we know we don't want other levels here...
@@ -1042,8 +1068,8 @@ PS.500 = rarefy_even_depth(PS.rm, rngseed=111, sample.size=500, replace=F)
 PS.500 <- prune_taxa(taxa_sums(PS.500) >0, PS.500) # remove those asvs not in > 0 sample, in the final data
 # 1651 taxa and 281 samples
 
-table(sample_data(PS.500)$sample_type) #281 samples: 28 water, 253 zooplankton, 1651 ASVs
-table(sample_data(PS.500)$organism) 
+table(sample_data(PS.500)$sample_type)
+#281 samples: 28 water, 253 zooplankton, 1651 ASVs
 
 # check sample data
 table(sample_data(PS.500)$organism) 
@@ -1101,83 +1127,6 @@ psotu2veg <- function(physeq) {
 }
 ```
 
-Here is the map of sampling locations. Don't run this, Maddy made a new map
-```{r map, eval=FALSE}
-gps <- as.data.frame(cbind(unique(sample_data(PS.500)$longitude), unique(sample_data(PS.500)$latitude)))
-rownames(gps) <- unique(sample_data(PS.500)$lake)
-
-map <- leaflet() %>%
-  setView(lng = -119, lat = 38.25, zoom = 10) %>%
-  addTiles() %>%
-  fitBounds(-118.75, 37.42, -119, 38.06) %>%
-  addMarkers(data = gps, lng = ~V1, lat = ~V2, popup = ~row.names(gps)) %>%
-  addMarkers(
-    lng = -118.7426, lat = 37.43153,
-    label = "Eastern Brook (3,155 m)",
-    labelOptions = labelOptions(noHide = T, direction = "left",
-      style = list(
-        "color" = "hotpink",
-        "font-family" = "serif",
-        "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
-        "font-size" = "12px",
-        "border-color" = "rgba(0,0,0,0.5)"))) %>%
-  addMarkers(
-    lng = -118.7444, lat = 37.43839,
-    label = "Serene (3,124 m)",
-    labelOptions = labelOptions(noHide = T, direction = "right",
-      style = list(
-        "color" = "green",
-        "font-family" = "sanserif",
-        "font-style" = "bold",
-        "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
-        "font-size" = "12px",
-        "border-color" = "rgba(0,0,0,0.5)"))) %>%
-  addMarkers(
-    lng = -118.8574, lat = 37.59009,
-    label = "Convict (2,315 m)",
-    labelOptions = labelOptions(noHide = T, direction = "right",
-      style = list(
-        "color" = "orange",
-        "font-family" = "serif",
-        "font-style" = "bold",
-        "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
-        "font-size" = "12px",
-        "border-color" = "rgba(0,0,0,0.5)"))) %>%
-   addMarkers(
-    lng = -119.2651, lat = 38.04698,
-    label = "Virginia (2,983 m)",
-    labelOptions = labelOptions(noHide = T, direction = "bottom",
-      style = list(
-        "color" = "gold",
-        "font-family" = "serif",
-        "font-style" = "bold",
-        "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
-        "font-size" = "12px",
-        "border-color" = "rgba(0,0,0,0.5)"))) %>%
-  addMarkers(
-    lng = -119.2703, lat = 38.05095,
-    label = "Blue (3,005 m)",
-    labelOptions = labelOptions(noHide = T, direction = "right",
-      style = list(
-        "color" = "blue",
-        "font-family" = "serif",
-        "font-style" = "bold",
-        "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
-        "font-size" = "12px",
-        "border-color" = "rgba(0,0,0,0.5)"))) %>%
-  addMarkers(
-    lng = -119.2770, lat = 38.04806,
-    label = "Cooney (3,116 m)",
-    labelOptions = labelOptions(noHide = T, direction = "left",
-      style = list(
-        "color" = "purple",
-        "font-family" = "serif",
-        "font-style" = "bold",
-        "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
-        "font-size" = "12px",
-        "border-color" = "rgba(0,0,0,0.5)")))
-map
-```
 
 Richness (observed and shannon) using PS.500 
 - look at richness by sample type (water vs. zooplankton)
@@ -1185,7 +1134,6 @@ Richness (observed and shannon) using PS.500
 - how does richness differ for individual taxa compared to water (it is much lower...)
 ```{r alpha diversity - plot_richness}
 #richness by organism (or sample type i.e, water) -- not transformed, but rarefied
-
 
 ## plots
 richness.plot.samples <- plot_richness(PS.500, x="sample_type", measures=c("Observed", "Shannon"), color="sample_type") +

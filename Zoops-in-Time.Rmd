@@ -1,6 +1,6 @@
 ---
-title: "Zooplankton Microbiomes Across Time and Space"
-author: "MG Perreault, CB Wall"
+title: "Geography and host identity shape intraseasonal variation of free-living and zooplankton associated microbial communities in alpine lakes"
+author: "CB Wall, MG Perreault, et al."
 date: "6/15/2025"
 output:
   html_document:
@@ -8,14 +8,14 @@ output:
     toc: yes
     toc_depth: 4
     toc_float: yes
-  pdf_document:
-    toc: yes
-    toc_depth: '4'
 editor_options: 
   chunk_output_type: console
 ---
+## Overview
+  
+Microbes contribute to aquatic ecosystem function and the fitness of macroscopic organisms, including zooplankton. Many factors affect the taxonomic compositions of free-living (bacterioplankton) and zooplankton-associated microbial communities in lakes, yet how these communities vary seasonally and among lakes remains poorly understood. Here we investigate how free-living bacterial communities and those associated with different crustacean zooplankton hosts change in response to fluctuations in their natural environment across time and space. Here we use repeated sampling of bacterioplankton, zooplankton communities, zooplankton microbiomes (16S-rRNA), and water chemistry parameters of six lakes in the eastern Sierra Nevada mountains of California across a summer season. We tested the influence of environmental conditions and spatial proximity as drivers of free-living and host-associated zooplankton. In addition, we tested whether microbiomes of zooplankton were distinct or similar among taxonomically diverse hosts and whether space or host identify best structured these communities.
 
-```{r global options, results="hide", warning=FALSE, message=FALSE}
+```{r global options, warning=FALSE, message=FALSE}
 if (!require('knitr')) install.packages('knitr'); library('knitr')
 knitr::opts_chunk$set(warning=FALSE, message=FALSE, fig.align='center', collapse=TRUE, cache=TRUE)
 
@@ -25,6 +25,7 @@ if (!require("pacman")) install.packages("pacman") # for rapid install if not in
 
 devtools::install_github("benjjneb/dada2", ref="v1.20") # update to most recent dada2
 remotes::install_github("microbiome/microbiome")
+remotes::install_github("kstagaman/phyloseqCompanion")
 
 if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
@@ -36,23 +37,23 @@ if (!require("dada2", quietly = TRUE))
     BiocManager::install("dada2", quietly = TRUE)
 
 # use pacman to load CRAN packages missing
-pacman::p_load('knitr', 'microbiome', 'phyloseq', 'tidyr', 'tidyverse', 'knitr', 'magrittr', 'effects', 'devtools', 'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan", "cowplot", 'doBy', 'ecodist', 'phyloseqCompanion', 'pairwiseAdonis', 'glue', 'geosphere', 'data.table', 'patchwork', 'car', 'ggcorrplot', 'FactoMineR', 'devtools', 'reshape', 'lattice',  'plyr', 'magrittr', 'factoextra', 'multcompView', 'decontam', 'factoextra', 'car', 'mia', 'ade4', 'fossil', 'picante', 'reshape', 'readr', 'corrr', 'Hmisc', "MASS", "FSA", "sciplot", "decontam","BiocManager", 'ggpubr', 'ggmap', "ggordiplots", "fossil", "SpiecEasi", "igraph", "huge", "leaflet", "ggtree", "colorBlindness", "RColorBrewer","MicrobiotaProcess", "predict3d", "ggiraphExtra", "data.table", "betapart", "naniar", "rstatix")
+pacman::p_load('knitr', 'microbiome', 'phyloseq', 'tidyr', 'tidyverse', 'knitr', 'magrittr', 'effects', 'devtools', 'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan", "cowplot", 'doBy', 'ecodist', 'phyloseqCompanion', 'pairwiseAdonis', 'glue', 'geosphere', 'data.table', 'patchwork', 'car', 'ggcorrplot', 'FactoMineR', 'devtools', 'emmeans', 'reshape', 'lattice',  'plyr', 'magrittr', 'factoextra', 'multcompView', 'decontam', 'factoextra', 'car', 'mia', 'ade4', 'fossil', 'picante', 'reshape', 'readr', 'corrr', 'Hmisc', "MASS", "FSA", "sciplot", "decontam","BiocManager", 'ggpubr', 'ggmap', "ggordiplots", "fossil", "SpiecEasi", "igraph", "huge", "leaflet", "ggtree", "colorBlindness", "RColorBrewer","MicrobiotaProcess", "predict3d", "ggiraphExtra", "data.table", "betapart", "naniar", "rstatix")
 ```
 
-## Overview
-
-### Map
-We samples 6 locations in the Eastern Sierra Nevada Mountains throughout the summer season. The map of lakes and their proximity can be seen below.
+### Site Map
+The map of lakes and their proximity can be seen below. We sampled zooplankton, water, and biogeochemical variables in lakes in the Eastern Sierra Nevada mountains of California, USA: Eastern Brook, Serene, Convict, Cooney, Blue, and Virginia.
 
 <center>  
   
-![**Image**. Sierra Nevada Lakes sampled for zooplankton microbiomes and environmental conditons across a summer season.](output/maps/Fig1.map.3 panel2.jpg){width=80%}
+![**Figure. 1**. Sierra Nevada Lakes sampled for zooplankton microbiomes and environmental conditons across a summer season.](output/maps/Fig1.map.3 panel2.jpg){width=67%}
  
 </center>  
 
 ### Envrironmental Data
-Load in the environmental field data and create plots for environmental conditions and water nutrients/chemistry across all lakes and sampling points. 
-- first remove outliers, check data structure, and add some carpintery to the metadata data frame.
+Load in the environmental field data and create plots for environmental conditions and water nutrients/chemistry across all lakes and 6 sampling points. 
+- first remove outliers, check data structure, and add some carpentry to the metadata data frame.
+- then load in nutrient and water chemistry data (collected *in situ*)
+- then load in air temperatures and precipitations data from sampling stations in Mammoth Lakes
 ```{r depth data, results='hide'}
 field.df<-read.csv("data/field_metadata.csv")
 field.df$date.simple<-field.df$time_point
@@ -91,8 +92,7 @@ colnames(mean.depth.SE)<-c("lake", "depth..m.SE")
 depth.df<-cbind(mean.depth.m[1:2], mean.depth.SE[2])
 ```
 
-- nutrients and water chemistry
-```{r nutrients, fig.show='hold', fig.cap="*Fig 2.* Environmental and water chemistry metrics measured in each of the six lakes across five sampling time points."}
+```{r nutrients, fig.show='hold', fig.dim=c(12,8), fig.cap="**Figure 2.** Environmental and water chemistry metrics measured in each of the six lakes across five sampling time points."}
 ######## TDP
 
 TP.plot<-ggplot(field.df, aes(x=date.simple, y=TDP..ug.L, group=lake, color=lake)) + 
@@ -213,8 +213,7 @@ dev.copy(pdf, "figures/Fig2.env.plots.pdf", height=7, width = 12)
 dev.off()
 ```
 
-- air temperatures and precipitation
-```{r weather air temp and precipitation, fig.cap="*Fig S1.*  Average air temperature and total daily precipitation across the summer season in which lake sampling occurred." }
+```{r weather air temp and precipitation, fig.dim=c(4,5),fig.cap="**Figure S1.**  Average air temperature and total daily precipitation across the summer season in which lake sampling occurred." }
 # air temp and rainfall
 
 weather <- read.csv('data/weather.SNARL.csv', header = TRUE)
@@ -242,7 +241,10 @@ dev.off()
 Using the zooplankton community data, we will make plots for the density of plankton at each lake and at the different sampling points, creating a dot-line plot for each taxa. We will then make a relative abundance stacked-density plot to show the change in zooplankton community composition.  
 
 #### Plankton density
-- first, the dot-line plot of the common taxa
+Generate a dot-line plot of the zooplankton taxa density (# plankton/L). We will use the most abundant and common taxa for these calculations.  
+
+Test for differences in zooplankton densities across lakes and time points.  
+*Note* Interactions aren't approproate for these models since there is only n=1 in each lake/time combination. We therefore use Type II SS of main effects.
 ```{r plot of zooplankton community dot-line, results='hide'}
 # load in the density data
 # density is the number of zoops per liter
@@ -288,8 +290,6 @@ overall.dens.plot <- ggplot(counts, aes(x = date.simple, y = dens.row.sums, colo
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
 
-Test for differences in zooplankton densities across lakes and time points.  
-*Note* Interactions aren't approproate for these models since there is only n=1 in each lake/time combination. We therefore use Type II SS of main effects.
 ```{r testing effects on densities and plotting, results='hide', collapse=TRUE}
 ### Lake and time effects
 tot.dens.mod<-lm(dens.row.sums ~ time_point + lake, data = counts)
@@ -314,9 +314,10 @@ tot.dens.site.time.aov
 tot.zoop.dens.env.aov
 ```
 
-- Now, test for differences in density of individual taxa
-- We will look at Daphnia, calanoid copepods, cyclopoid copepods, nauplii, asplanchna,and other less common groups
-```{r testing effects for individual taxa, results='hide'}
+Now, that we have examined the *total density of zooplankton*, we wil test for differences in density of individual taxa.
+- We will look at Daphnia, calanoid copepods, cyclopoid copepods, nauplii, asplanchna, and other less common groups
+- make dot-line plots and run linear modesl
+```{r testing effects for individual taxa, results='hide', fig.show="hide"}
 ##### Daphnia
 daphnia.dens.plot <- ggplot(counts, aes(x = date.simple, y = daphnia.dens, color = lake, group = lake)) +
   geom_point(size = 2) + 
@@ -428,16 +429,6 @@ ceriodaphnia <- ggplot(counts, aes(x = date.simple, y = cerio.dens, color = lake
    scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
   theme_classic() + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-ceriodaphnia
-
-# model
-ceri.dens.mod<-lm(cerio.dens ~ time_point + lake, data = counts)
-ceri.dens.aov<-Anova(ceri.dens.mod, type=2) #lake signif
-plot(allEffects(ceri.dens.mod))
-
-# posthoc just looking at time point
-ceri.dens.ph<-emmeans(ceri.dens.mod, pairwise~lake)
-multcomp::cld(ceri.dens.ph, Letters=letters)
 
 
 ###### bosmina
@@ -448,8 +439,6 @@ bosmina.dens.plot <- ggplot(counts, aes(x = date.simple, y = bos.dens, color = l
   theme_classic() + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-Anova(lm(bos.dens ~ time_point + lake, data = counts)) # no effect
-
 
 ###### kellicotia
 kellicotia.dens.plot <- ggplot(counts, aes(x = date.simple, y = kell.dens, color = lake, group = lake)) +
@@ -459,8 +448,6 @@ kellicotia.dens.plot <- ggplot(counts, aes(x = date.simple, y = kell.dens, color
   theme_classic() + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-Anova(lm(kell.dens ~ time_point + lake, data = counts)) # no effect
-
 
 ##### keratella
 keratella.dens.plot <- ggplot(counts, aes(x = date.simple, y = ker.dens, color = lake, group = lake)) +
@@ -469,9 +456,6 @@ keratella.dens.plot <- ggplot(counts, aes(x = date.simple, y = ker.dens, color =
    scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
   theme_classic() + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-keratella
-
-Anova(lm(ker.dens ~ time_point + lake, data = counts)) # no effect
 
 
 #### holopedium
@@ -482,8 +466,6 @@ holopedium.dens.plot <- ggplot(counts, aes(x = date.simple, y = holo.dens, color
   theme_classic() + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-Anova(lm(holo.dens ~ time_point + lake, data = counts)) # not enough species frequency
-
 
 #### polyphemus
 polyphemus.dens.plot <- ggplot(counts, aes(x = date.simple, y = poly.dens, color = lake, group = lake)) +
@@ -492,20 +474,16 @@ polyphemus.dens.plot <- ggplot(counts, aes(x = date.simple, y = poly.dens, color
   theme_classic() + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-Anova(lm(poly.dens ~ time_point + lake, data = counts)) # no effect
-
 
 #### chydorus
 chydorus.dens.plot <- ggplot(counts, aes(x = date.simple, y = chy.dens, color = lake, group = lake)) +
   geom_point(size=2) + geom_line() +
   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
   theme_classic()
-
-Anova(lm(chy.dens ~ time_point + lake, data = counts)) # no effect
 ```
 
-- Compile the dot-line plot for all common zooplankton taxa
-```{r combine zooplankton plot, results='hide', fig.cap="*Fig S3.* Changes in zooplankton densities across six mountain lakes across five sampling time points"}
+- Compile all the dot-line plots for all zooplantkon and the common zooplankton taxa
+```{r combine zooplankton plot, results='hide', fig.show="hold", fig.dim=c(10,6), fig.cap="**Figure S3.** Changes in zooplankton densities across six mountain lakes across five sampling time points"}
 ####### make aggregated plot
 combined.dens.plot <- ggarrange(
                            overall.dens.plot + theme(axis.title.y =element_text(size=8))+ guides(color="none"),
@@ -525,7 +503,7 @@ dev.off()
 
 #### Plankton relative abundance
 - Create a stacked density plot for the zooplankton relative abundance
-```{r stacked density plot, results="hide", fig.cap="*Fig 3.* Relative abundances of zooplankton taxa (as proportion of total density per liter) in communities of six mountain lakes in California’s Eastern Sierra Nevada across five sampling time points."}
+```{r stacked density plot, results="hide", fig.dim=c(10,6), fig.cap="**Figure 3.** Relative abundances of zooplankton taxa (as proportion of total density per liter) in communities of six mountain lakes in California’s Eastern Sierra Nevada across five sampling time points."}
 long_counts <- tidyr::pivot_longer(data = counts, cols = c(23:34), 
                                    names_to = "Taxa", values_to= "Density")
 long_counts <- as.data.frame(long_counts)
@@ -552,12 +530,11 @@ zoop_abundances_area <- ggplot(long_counts, aes(x=Time.cont, y=Rel.abund, fill=T
 zoop_abundances_area
 dev.copy(pdf, "figures/Fig3.zoop_abundances_areaplot.pdf", height=6, width=15)
 dev.off()
-
 ```
 
 Run models to test for differences in zooplankton community, using Shannon diversity.  First look for the model that best explains the data using StepAIC, then run ANOVA on the best model.  
-*Note* Interactions aren't approproate for these models since there is only n=1 in each lake/time combination. We therefore use Type II SS of main effects.
-```{r stats on zoops, results='hide', collapse=TRUE}
+- *Note* Interactions aren't appropriate for these models since there is only n=1 in each lake/time combination. We therefore use Type II SS of main effects.
+```{r stats on zoops, results='hide', fig.show='hide', collapse=TRUE}
 # Shannon diversity
 zoop.comm.div <- as.data.frame(vegan::diversity(counts[,c(23:34)], index="shannon"))
 zoop.comm.div <- cbind(counts, zoop.comm.div)
@@ -786,7 +763,7 @@ table(sample_data(PS.fin)$sample_type) #328 samples: 30 water, 298 zooplankton
 sample_data(PS.fin)$organism<-factor(sample_data(PS.fin)$organism, levels =c("Daphnia", "Holopedium", 
                                    "Calanoid", "Cyclopoid", "Water", "Bosmina", "Ceriodaphnia")) # back to factor
 
-table(tax_table(PS.fin)[, "Kingdom"], exclude = NULL) # 289 Archaea, 7751 Bacteria
+table(phyloseq::tax_table(PS.fin)[, "Kingdom"], exclude = NULL) # 289 Archaea, 7751 Bacteria
 summarize_phyloseq(PS.fin)
 
 ########### ########### ########### ########### 
@@ -799,7 +776,7 @@ if(taxa_are_rows(PS.fin)){OTU <- t(OTU)}
 # Coerce to data.frame
 OTUdf = as.data.frame(OTU)
 
-Tax.tab = as(tax_table(PS.fin), "matrix")
+Tax.tab = as(phyloseq::tax_table(PS.fin), "matrix")
 if(taxa_are_rows(PS.fin)){Tax.tab <- t(Tax.tab)}
 # Coerce to data.frame
 TAXdf = as.data.frame(Tax.tab)
@@ -817,8 +794,7 @@ write.csv(SAMdf, "output/phyloseq output/SAMdf.nonrar.csv")
 microbiome::summarize_phyloseq(PS.fin)
 ```
 
-
-```{r total reads by species boxplots raw data, resuls='hide'}
+```{r total reads by species boxplots raw data, resuls='hide', fig.show='hide'}
 #### Inspect the run: 
 # what is the # of reads/sample? 
 # A bit over inflated due to water being so deeply sequenced, but log-read sum gives us a good picture
@@ -841,7 +817,7 @@ ggplot(MetaD.SQ.Env[(MetaD.SQ.Env$sample_type=="Zooplankton"),], aes(x=sample_ty
 ```
 
 - Now look at read depth and rarefaction curves to determine how to standardize sampling depth
-```{r Read depth plots and rarefaction curves, eval=FALSE}
+```{r Read depth plots and rarefaction curves, fig.dim=c(7,5), fig.show='hold', fig.cap="**Figure S2**. Rarefaction curve of number of bacterial ASVs as a function of sequencing depth (the number of reads per sample)."}
 
 # Histogram of sample read counts
 hist.depth <- ggplot(MetaD.SQ.Env, aes(read.sum)) + 
@@ -849,12 +825,10 @@ hist.depth <- ggplot(MetaD.SQ.Env, aes(read.sum)) +
   xlab("Read counts") +
   ggtitle("Sequencing Depth") + theme_classic()
 
-hist.depth
-
 # a different view
-read_depth_violin <- ggplot(MetaD.SQ.Env, aes(x=1, y=read.sum)) +
-  geom_violin() + ggtitle("Distribution of sample sequencing depth") + scale_y_log10() +
-  xlab("Samples") + ylab("Read Depth") + geom_boxplot(width=0.1)
+#read_depth_violin <- ggplot(MetaD.SQ.Env, aes(x=1, y=read.sum)) +
+#  geom_violin() + ggtitle("Distribution of sample sequencing depth") + scale_y_log10() +
+#  xlab("Samples") + ylab("Read Depth") + geom_boxplot(width=0.1)
 
 # Rarefaction curve
 count_table_filt <- as.data.frame(otu_table(PS.fin))
@@ -870,7 +844,7 @@ Now we will subset the phyloseq objects and compare the influence of rarefaction
 - `PS.500` is rarefied to 500 read-depth (with low abundance samples removed)
 - `PS.zoop` is rarefied zooplankton data (500 read depth)
 - `PS.water` is rarefied water only (500 read depth)
-```{r exploring what low read count samples do and what to rarefy to}
+```{r exploring ordination and what to rarefy to, fig.show='hide'}
 ###### subset the PS objects for needs...
 # final and NOT rarefied data: 
 PS.fin
@@ -897,8 +871,9 @@ summarize_phyloseq(PS.rar)
 # DCA1 > 4 = the dataset is considered as heterogeneous and suitable for unimodal methods (RDA, CCA)
 # DCA1 < 3 = it can be considered as homogeneous, suitable for linear methods (PCA, RDA)
 # DCA1 =  3-4, both linear or unimodal methods are ok. After this decision, use either linear (PCA, RDA)
-DCA.full<-ordinate(PS.fin, method='DCA') # DCA-axis1 length = 6
-plot_ordination(PS.fin, DCA.full, color = "sample_type",  type='split')
+
+#DCA.full<-ordinate(PS.fin, method='DCA') # DCA-axis1 length = 6
+#plot_ordination(PS.fin, DCA.full, color = "sample_type",  type='split')
 
 
 ###################### full data, non-rarified PCoA ###################### 
@@ -1031,8 +1006,9 @@ Rare.number.org<-plot_ordination(PS.fin, PCoA.full, color = "Number.of.Organism"
   scale_shape_manual(values=c(16,17,18,1,2,3,4))+
   ggtitle("Organism number rarefaction") + theme_classic() 
 Rare.number.org$layers <- Rare.number.org$layers[-1]
+```
 
-
+```{r ordination tests compiled, fig.show='hold', fig.dim=c(16,10), fig.cap="**Exploratory Figure**. Testing different approaches and identifying samples with low reads to be dropped."}
 ####
 ordination.tests<-plot_grid(Rare.culling + guides(color="none"), 
                       Non.rar.PCoA +  guides(color="none"), 
@@ -1049,10 +1025,10 @@ dev.off()
 # unload 'MicrobiotaProcess'
 detach("package:MicrobiotaProcess", TRUE)
 ```
+  
+After running the tests of rarifying data transformation influence our data (and seeing the low sample size for Bosmina and Ceriodaphnia), we will proceed with a rarified dataset and drop these two species. The variation in DCA shows we can proceed with assumption of heterogeneous distributions and use RDA/CCA, use PCoA/NMDS with Bray-Curtis, or proceed with rank-based ordination approached (NMDS) with fewer axis.
 
-After running the tests of rarifying data transformation influence our data (and seeing the low sample size for Bosmina and Ceriodaphnia), we will proceed with a rarified dataset and drop these two species. The variation in DCA shows we can proceed with assumption of heterogeneous distributions and use RDA/CCA, use PCoA/NMDS with Bray-Curits, or proceed with rank-based ordination approached (NMDS) with fewer axises.
-
-We will use rarified data, and demonstrate ordination differences using PCoA with unweighted unifrac distance (accounting for abundance and phylogeny) and NMDS-Bray Crutis for maximal distance between groups
+We will use rarified data, and demonstrate ordination differences using PCoA with unweighted unifrac distance (accounting for abundance and phylogeny) and NMDS-Bray Curtis for maximal distance between groups
 ```{r final phyloseq, results='hide'}
 ################### final phyloseq object based on the above
 
@@ -1089,7 +1065,7 @@ if(taxa_are_rows(PS.500)){OTU <- t(OTU)}
 # Coerce to data.frame
 OTUdf.rar = as.data.frame(OTU)
 
-Tax.tab = as(tax_table(PS.500), "matrix")
+Tax.tab = as(phyloseq::tax_table(PS.500), "matrix")
 if(taxa_are_rows(PS.500)){Tax.tab <- t(Tax.tab)}
 # Coerce to data.frame
 TAXdf.rar = as.data.frame(Tax.tab)
@@ -1128,11 +1104,12 @@ psotu2veg <- function(physeq) {
 ```
 
 
-Richness (observed and shannon) using PS.500 
+Richness (observed and shannon) using PS.500 = rarified phyloseq to 500 reads/sample
 - look at richness by sample type (water vs. zooplankton)
 - look at how time and site effect richness
 - how does richness differ for individual taxa compared to water (it is much lower...)
-```{r alpha diversity - plot_richness}
+- plots here will be in Figure 4 A-D, printed below with beta dispersion
+```{r alpha diversity plot_richness, fig.show='hide'}
 #richness by organism (or sample type i.e, water) -- not transformed, but rarefied
 
 ## plots
@@ -1205,77 +1182,24 @@ richness.spp.obs <- plot_richness(PS.500, x="organism", color="organism", measur
 richness.spp.obs$layers <- richness.spp.obs$layers[-1] # remove the first layer of points 
 richness.spp.obs
 
-
-#richness by organisms (zoop species and water)
-#Shannon
-richness.spp.time.shan <- plot_richness(PS.500, x="time_point", color="organism", measures=c("Shannon")) +
-  labs(y= "Alpha Diversity", x = "Sampling Time Points") + 
-  coord_cartesian(ylim=c(0, 5))+
-  geom_boxplot(aes(fill=organism), alpha=0.4, outlier.size=0.8) + guides(fill="none") + guides(color="none")+
-  geom_point(alpha=0.5, size=0.8, position=position_dodge(width = 0.75)) +
-  scale_fill_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
-  scale_color_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
-  theme(axis.text.x=element_blank(), strip.text.x = element_text(size = 12)) + theme_bw() +
-  theme(axis.text.x = element_text(angle = 20, vjust = 0.5, hjust=1))
-
-richness.spp.time.shan$layers <- richness.spp.time.shan$layers[-1] # remove the first layer of points 
-richness.spp.time.shan
-
-
-#richness by organisms (zoop species and water)
-#observed
-richness.spp.lake.shan <- plot_richness(PS.500, x="lake", color="organism", measures=c("Shannon")) +
-  labs(y= "Alpha Diversity", x = "Lakes") + 
-  coord_cartesian(ylim=c(0, 5))+
-  geom_boxplot(aes(fill=organism), alpha=0.4, outlier.size=0.8) + guides(fill="none") + guides(color="none")+
-  geom_point(alpha=0.5, size=0.8, position=position_dodge(width = 0.75)) +
-  scale_fill_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
-  scale_color_manual(values=c("coral2", "gold3", "darkolivegreen3", "darkslategray4", "dodgerblue")) +
-  theme(axis.text.x=element_blank(), strip.text.x = element_text(size = 12)) + theme_bw()+
-   theme(axis.text.x = element_text(angle = 20, vjust = 0.5, hjust=1))
-
-richness.spp.lake.shan$layers <- richness.spp.lake.shan$layers[-1] # remove the first layer of points 
-richness.spp.lake.shan
-
 extract.legend.richness <- get_legend(
   # create some space to the left of the legend
-  richness.spp.lake.shan + theme(legend.box.margin = margin(0, 0, 0, 10)))
-
-
-# group the above two plots
-alpha.organism.time.lake<-plot_grid(richness.spp.time.shan, 
-                                    richness.spp.lake.shan,
-                                    ncol=2, labels=c("A", "B"), rel_widths = c(5,5.2))
-
-alpha.organism.time.lake
-dev.print(pdf, "figures/Figx.shannon.interaction.pdf", width=10, height=5)
-dev.off()
+  richness.spp.obs + theme(legend.box.margin = margin(0, 0, 0, 10)))
 ```
 
 Use Shannon Diversity and Alpha richness to test differences across sampling factors
-```{r ASV Richness and Diversity stats}
+- Use Shannon and Observed and test for time, lake, and organisms (species and or water) effects on alpha diversity
+```{r ASV Richness and Diversity stats, fig.show='hide'}
 # some stats
 Shan.rich<-estimate_richness(PS.500, measures =c("Observed", "Shannon"))
 rownames(Shan.rich) <- substr(rownames(Shan.rich),2,nchar(rownames(Shan.rich))) # to remove the "X"
 Shan.rich.df<-merge(data.frame(sample_data(PS.500)), Shan.rich, by = "row.names") # merge 
 
-#### SHANNON fully orthogonal
-# full 3 way for shannon
-rich.shan.all<- lm(Shannon~ time_point*lake*organism, data=Shan.rich.df)
-Anova(rich.shan.all) #time*lake significant
-plot(allEffects(rich.shan.all))
-
-emmeans(rich.shan.all, ~time_point*lake*organism, calc = c(n = ".wgt."))
-with(Shan.rich.df, table(time_point, lake, organism))
-
-rich.test.lake.full<-emmeans(rich.shan.all, pairwise~time_point|organism)
-multcomp::cld(rich.test.lake.full, Letters=letters)
-
 #### SHANNON
 # straight 3 way no-interaction (bc of missing samples post filtering)
 rich.shan.reduced<- lm(Shannon~ time_point+lake+organism, data=Shan.rich.df)
-Anova(rich.shan.reduced, type=2) #time*lake significant
-plot(allEffects(rich.shan.reduced))
+Anova(rich.shan.reduced, type=2) #lake and "organism" significant
+#plot(allEffects(rich.shan.reduced))
 
 #  posthoc just looking at Lake (p=<0.001)
 rich.test.lake<-emmeans(rich.shan.reduced, pairwise~lake)
@@ -1319,14 +1243,11 @@ multcomp::cld(obsrich.test.group, Letters=letters)
 ```
 
 Now testing effects of environmental variables on Shannon diversity.
-```{r Shannon and environ}
+- first run a correlation matrix to see what variables show high correlation and should not be included in muliple analyses or variance or StepAIC model selection.
+```{r correlation matrix, fig.show='hold', fig.dim=c(7,5), fig.cap="**Exploratory Figure**. Correlation matrix for environmental conditions and geography."}
 # testing effects of environmental variables on Shannon diversity
 # full df = 'Shan.rich.df'
 
-# separate by water or zooplankton
-Shan.water.df<-Shan.rich.df[(Shan.rich.df$sample_type=="Water"),]
-Shan.zoop.df<-Shan.rich.df[(Shan.rich.df$sample_type=="Zooplankton"),]
- 
 ###### Compute correlation at 2 decimal places
 # matrix for environmental conditions
 Shan.rich.df.env<-Shan.rich.df %>% dplyr::select(latitude, elevation_m, temp_C, DOC, chla_ug.L, 
@@ -1339,7 +1260,13 @@ corr_matrix = round(cor(Shan.rich.df.env), 2)
 ggcorrplot(corr_matrix, hc.order = TRUE, type = "lower",
           lab = TRUE)
 # strong negative correlation between elevation- cond and cond-chla (<0.69-0.73)
+```
 
+Shannon diversity according to sample type: Separate the sample types, as this is a strong predictor. Run separate analyses for water bacterioplankton and zooplankton (host-associated) microbial communities. 
+```{r Shannon and environ, fig.show='hide'}
+# separate by water or zooplankton
+Shan.water.df<-Shan.rich.df[(Shan.rich.df$sample_type=="Water"),]
+Shan.zoop.df<-Shan.rich.df[(Shan.rich.df$sample_type=="Zooplankton"),]
 
 ####### water first
 Shan.water.df$elevation_m<-as.numeric(Shan.water.df$elevation_m)
@@ -1358,9 +1285,6 @@ summary(lm(Shannon ~ elevation_m, data = Shan.water.df)) # NS
 summary((lm(Shannon ~ latitude, data = Shan.water.df))) # NS
 summary(lm(Shannon ~ DO_perc, data = Shan.water.df)) # NS
 summary(lm(Shannon ~ cond, data = Shan.water.df)) # NS
-
-
-
 
 # summary By for median, mean, and standard error of the Shannon diversity by lake
 lake_div.wat <- summaryBy(Shannon ~ lake, 
@@ -1468,7 +1392,7 @@ For ordination use PCoA [rarifed data, db-Bray Curtis], compare with unweighted 
 - perform PCoA on all samples
 - perform PCoA on rarified 500 reads 
 - perform PCoA on rarified-hellinger transformed
-```{r PCoA and W-Unifrac final}
+```{r PCoA and W-Unifrac final, fig.show='hold', fig.dim=c(12,5), fig.cap="**Figure S5**. Analysis of zooplankton-associated and free-living (water) bacteria community beta diversity using (A) principal coordinate analysis (PCoA) of Bray-Curtis dissimilarity and (B) weighted and (C) unweighted unifrac distance."}
 
 ###### check the # of samples in each taxa
 table(sample_data(PS.500)$organism)
@@ -1493,7 +1417,7 @@ PCoA.rar.bray<- plot_ordination(
 PCoA.rar.bray$layers <- PCoA.rar.bray$layers[-1]
 
 library("colorBlindness")
-cvdPlot(PCoA.rar.bray) # see that the pallete is colorblind friendly
+#cvdPlot(PCoA.rar.bray) # see that the pallete is colorblind friendly
 
 
 ####### 
@@ -1556,6 +1480,7 @@ Run PERMANOVA on the dissimilarity. The code here is meant to give PERMANOVA tes
 - first, we will run analysis for all samples
 - then for zooplankton alone
 - then for water alone
+- output from models here will be in *Table S 
 ```{r metaMDS, scores, and PERMANOVAS from BC distance matrices}
 ####################################
 # first let's look at PERMANOVA and NDMS for the full dataset
@@ -1576,16 +1501,19 @@ scores.full <- as.data.frame(scores(nmds.rar, display = "sites"))
 scores.1.2<-scores.full[-3] # subset to just give the 2 axis space for NMDs1-2
 
 nmds.rar.df <- merge(sample_data(PS.500), scores.1.2, by = 'row.names', all = TRUE)
+```
 
+```{r metaMDS, eval=FALSE}
+### can cut? #############################################
 # pull out the sample data for PERMANOVA
 # all.sam.df <- pssd2veg(PS.500) 
 
 # make the plot to visualize it (rough)
-ggplot(nmds.rar.df) +
-  geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = organism), size= 2) +
-  #coord_fixed(ratio=1.6) + 
-  stat_ellipse(level=0.95, linetype = 2, linewidth=0.6, aes(x = NMDS1, y = NMDS2, color=organism)) +
-  ggtitle("all samples")
+#ggplot(nmds.rar.df) +
+#  geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = organism), size= 2) +
+#  coord_fixed(ratio=1.6) + 
+#  stat_ellipse(level=0.95, linetype = 2, linewidth=0.6, aes(x = NMDS1, y = NMDS2, color=organism)) +
+#  ggtitle("all samples")
 
 
 # use this #
@@ -1611,41 +1539,15 @@ bc_zoop <- phyloseq::distance(zoop.phylo, method = "bray") # rarefied
 env.model.zoop <- adonis2(bc_zoop ~ latitude + elevation_m + temp_C + pH + cond + 
                             DOC + chla_ug.L + DO_perc, data = zoop.rar.df, permutations = 999, by="terms")
 env.model.zoop # latitude is best (0.06), elevation (0.04), DO (0.02)
-
 ```
 
-- distance to centroids
-```{r beta distance to centroids}
+- calcualte distance to centroids from NMDS 1 and 2
+```{r beta distance to centroids, fig.show='hide'}
 ######
-# lets look at beta diversity and distance to centroid a bit: (zoop species and water)
+# inspect beta diversity and distance to centroid a bit: (zoop species and water)
 # using the rarefied here since beta diversity metric
-set.seed(10000)
-bc_500.bd <- phyloseq::distance(PS.500, method = "bray") # rarefied 
-bc_beta.df <- as.data.frame(sample_data(PS.500))
 
-# one approach
-bd<-betadisper(bc_500.bd, bc_beta.df$organism, type="centroid")
-permutest(bd, permutations = 99)
-anova(bd)
-plot(bd)
-boxplot(bd)
-TukeyHSD(bd)
-
-par(mar=c(5,7,3,1)) 
-plot(TukeyHSD(bd), cex.axis=0.7, las=1)
-
-bc_betadisp<-plot(bd, ellipse = TRUE, hull = FALSE, label.cex = 0.4, main="Distance to Centroids")
-
-sqrt(dist(bd$centroids[,bd$eig>0])^2 - dist(bd$centroids[,bd$eig<0]^2))
-
-#
-bd$group.distances # this is Average distance to centroid for each group
-scores(bd, 1:2, display = "centroids") # this is the centroid for each group
-bd.df <- data.frame(Distance_to_centroid = bd$distances, organism=bd$group) # dataframe
-
-
-######## ######## ######## ######## 
-######## let's use another approach for NMDS only
+######## let's use  approach for NMDS only
 # calculate mean distances to centroid manually (use 'grp.median' if using not using centroid in betadisper)
 groups<-nmds.rar.df$organism
 
@@ -1697,7 +1599,7 @@ dunn_test(dist.to.centr ~ organism, data = bdisp.df)
 
 - combine the plots
 - multipanel alpha diversity plot from above with beta diversity distance to centroid
-```{r combine alpha and distance to centroids}
+```{r combine alpha and distance to centroids, fig.dim=c(18,8), fig.cap="**Fig 4.** Shannon diversity of bacterial communities across (A) sampling time points, (B) lakes, and (C) among zooplankton and water samples. (D) Observed ASV richness by sample type (zooplankton and water). (E) Beta diversity as average distance to group centroids for two axes of non-metric multidimensional scaling ordination (NMDS1-2)."}
 # combine with richness
 alpha.beta.rich.plot<-plot_grid(alpha.time.lake, richness.spp.shan, 
                            richness.spp.obs + guides(color="none", fill="none"), 
@@ -1708,7 +1610,9 @@ dev.copy(pdf, "figures/Fig4.alpha.beta.rich.plot.pdf", height=6, width=16)
 dev.off()
 ```
 
-- PERMANOVA with Time, Lake, Organisms
+#### PERMANOVA 
+Run PERMANOVA for beta diversity, testing for effects of Time, Lake, Organism. Run PERMANOVA for Bray-Curtis, Unifrac, and Weighted Unifrac.
+- This is **Table 3**.
 ```{r full Permanova}
 ###############
 # Permanova with 3 methods
@@ -1766,17 +1670,15 @@ anova(betadisper(unif_500, nmds.rar.df$organism)) # very significant
 pairwise.adonis(unif_500, factors=nmds.rar.df$time_point, p.adjust.m="holm")
 pairwise.adonis(unif_500, factors=nmds.rar.df$lake, p.adjust.m="holm")
 pairwise.adonis(unif_500, factors=nmds.rar.df$organism, p.adjust.m="holm")
-
 ```
 
 
-#### By-group NMDS and envfit
-
+#### NMDS and envfit: By-group
 Run NMDS with envfit for water, daphnia, calanoids, cyclopoids to better understand how environment is impacting these host-microbiomes. We will run NMDS and fit env.fit, perform PERMANOVA, test betadispersion, and test env conditions on BC matrix. 
 
 - First, run  *Daphnia*
 - Holopedium too few to be informative here
-```{r daph env NMDS}
+```{r daph env NMDS, fig.show='hide'}
 # run same analysis but subset to only be cladocerans
 # sample data and OTU table for vegan
 # subset
@@ -1870,7 +1772,7 @@ bioenv(bc_daph, daph.rar.env, scale.var = TRUE)
 ```
 
 - Now run NMDS-envfit for *calanoids*
-```{r calanoid env nmds}
+```{r calanoid env nmds, fig.show='hide'}
 # subset
 calan.phylo<-subset_samples(PS.500, organism=="Calanoid")
 calan.phylo <- prune_taxa(taxa_sums(calan.phylo) >0, calan.phylo) # remove those asvs with 0 sum
@@ -1957,7 +1859,7 @@ bioenv(bc_calan, calan.rar.env, scale.var = TRUE)
 ```
 
 - Now run NMDS-envfit for *cyclopoids*
-```{r cyclopoid env nmds}
+```{r cyclopoid env nmds, fig.show='hide'}
 # subset
 cyclop.phylo<-subset_samples(PS.500, organism=="Cyclopoid")
 cyclop.phylo <- prune_taxa(taxa_sums(cyclop.phylo) >0, cyclop.phylo) # remove those asvs with 0 sum
@@ -2043,7 +1945,7 @@ bioenv(bc_cyclop, cyclo.rar.env, scale.var = TRUE)
 ```
 
 - Lastly, run NMDS-envfit for *Water*
-```{r water env nmds}
+```{r water env nmds, fig.show='hide'}
 # subset
 water.phylo<-subset_samples(PS.500, sample_type=="Water")
 water.phylo <- prune_taxa(taxa_sums(water.phylo) >0, water.phylo) # remove those asvs with 0 sum
@@ -2130,8 +2032,8 @@ bioenv(bc_water, wat.rar.env, scale.var = TRUE)
 # latitude + cond = 0.81
 ```
 
-- make an aggregate plot of the 4 NMDS-envs
-```{r envfit NMDS fig}
+Make an aggregate plot of the 4 NMDS-envs.
+```{r envfit NMDS fig, fig.dim=c(13,4), fig.cap="**Figure 8**. Non-metric multidimensional scaling (NMDS) ordination on Bray-Curtis dissimilarity matrix of bacterial communities associated with (A) Daphnia, (B) calanoid and (C) cyclopoid copepod zooplankton, or in (D) water across six lakes and five sampling time points."}
 extract.legend <- get_legend(
   # create some space to the left of the legend
   NMDS.daph + theme(legend.box.margin = margin(0, 0, 0, 10)))
@@ -2150,9 +2052,8 @@ dev.off()
 
 
 #### NMDS by taxa-space-time
-
 This code runs NMDS plots for all the data with different binning factors. May need to reduce and/or decide if PCoA or NMDS is best for showing "full community differences", which presently is in both places.
-```{r General NMDS time, lake, basin, etc)}
+```{r General NMDS time lake basin, fig.dim=c(8,6), fig.cap="**Figure 7**. Bacterial communities associated with zooplankton and in water of six mountain lakes across five sampling time points. Non-metric multidimensional scaling (NMDS) ordination plots grouped by (A) host organism (species or functional group), (B) taxonomic group, (C) sampling time points, and (D) across lake-basins, being in the north or south."}
 
 nmds.organism <- ggplot(nmds.rar.df, aes(x=NMDS1, y=NMDS2, color = organism)) +
   geom_point(aes(color = organism, shape=sample_type), size = 1.3) + 
@@ -2174,7 +2075,6 @@ nmds.phy_group <- ggplot(nmds.rar.df, aes(x=NMDS1, y=NMDS2, color = phy_group)) 
   scale_color_manual(values = c("indianred3","darkolivegreen4", "dodgerblue3")) +
   scale_shape_manual(values=c(1,16))+
   ggtitle("Taxonomic Group")
-
 
 
 nmds.rar.df$Date<-as.factor(nmds.rar.df$time_point)
@@ -2226,10 +2126,10 @@ dev.off()
 ```
 
 #### Stacked bar
-Relative abundance stacked bar plot
-```{r stacked bar plots}
+Relative abundance stacked bar plot for microbial community
+```{r stacked bar plots, results='hide', message='hide', fig.show='hold', fig.dim=c(12,10), fig.cap="**Figure 6**. Relative abundance of bacteria classes among Cladocera (Daphnia, Holopedium) and Copepoda (calanoid and cyclopoid copepods) zooplankton and water in six lakes of the Eastern Sierra Nevada mountains at five time points across the summer season."}
 ########### plotting relative abundance, help from Megan Demmel, this is what I will use for analysis of relative abundances/ composition
-PS.500 %>%  plot_composition()
+# PS.500 %>%  plot_composition()
 
 # unload("MicrobiotaProcess") if there is an issue with the taxa table, this is the source (conflict)
 pm <- psmelt(PS.500)
@@ -2244,7 +2144,17 @@ Abund.final$rel_abund <- Abund.final$Abundance/Abund.final$tot.abund
 # classes that have rel.abund less than 5% will be named as other
 Abund.final$Class[Abund.final$rel_abund <= 0.05] <- "Other (<5%)" 
 
-View(Abund.final)
+# to avoid Quartz opening in Mac OS
+Show <- function(x){
+	invisible(
+		if (interactive()){
+			View(x, deparse(substitute(x)))
+		}
+	)
+}
+
+# now "view or show" the table
+Show(Abund.final)
 
 Abund.final$Class<-as.factor(Abund.final$Class)
 Abund.final$Class<-factor(Abund.final$Class, 
@@ -2280,52 +2190,7 @@ dev.copy(pdf, "figures/Fig6.Relabund.facet.pdf", height=10, width=12)
 dev.off()
 ```
 
-```{r phyloseq class and family RA}
-
-### being paranoid... show me that phyloseq makes the same figure as above at class level
-#total = median(sample_sums(PS.500))
-#standf = function(x, t=total) round(t * (x / sum(x)))
-#normalized_ps = transform_sample_counts(PS.500, standf)
-
-merged.PS.500 <- merge_samples(PS.500, "sampleNames") # merge by samples (this is how data should be already)
-sample_data(merged.PS.500)$phy_group <- factor(sample_data(PS.500)$phy_group)
-sample_data(merged.PS.500)$lake <- factor(sample_data(PS.500)$lake)
-
-normalized_ps_class = tax_glom(merged.PS.500, "Class", NArm = TRUE)
-normalized_ps_class_relabun = transform_sample_counts(normalized_ps_class, function(OTU) OTU/sum(OTU))
-
-############
-ps.abund.class<-psmelt(normalized_ps_class_relabun)
-ps.abund.class<-ps.abund.class %>%
-   dplyr::rename("rel_abund" = "Abundance") 
-
-# classes that have rel.abund less than 5% will be named as other
-ps.abund.class$Class[ps.abund.class$rel_abund <= 0.051] <- "Other (<5%)" 
-
-ps.abund.class$Class<-as.factor(ps.abund.class$Class)
-ps.abund.class$Class<-fct_relevel(ps.abund.class$Class, 'Other (<5%)', after=Inf)
-
-ps.abund.class$Date<-as.factor(ps.abund.class$time_point)
-ps.abund.class$Date<-recode_factor(ps.abund.class$Date, 
-                                "1" = "25-Jun",
-                                "2" = "6-Jul",
-                                "3" = "21-Jul",
-                                "4" = "4-Aug",
-                                "5" = "22-Aug")
-
-# by lake, time, phy_group
-ggplot(ps.abund.class, aes(x = Date, y = rel_abund, fill= Class, color = Class)) +
-  geom_bar(width = 0.8, aes(fill = Class, color = Class), stat ="identity", position = "fill") +
-  facet_grid(cols = vars(lake), rows = vars(phy_group)) + 
-  xlab("Sampling Time Point") +  
-  ylab("Relative Abundance") +
-  theme_bw() +
-  theme(axis.text.x=element_text(size=8, angle = 75, vjust = 0.5, hjust=1), axis.title.x=element_text(size=13)) +
-  theme(axis.text.y=element_text(size=11), axis.title.y=element_text(size=13)) +
-  theme(strip.text.x = element_text(size = 13), strip.text.y = element_text(size = 13)) +
-  scale_fill_manual(values = c("red4", "orangered", "gold", "lightsalmon", "seagreen4", "lightgreen","lightskyblue", "royalblue3", "plum", "tan3")) +
-  scale_color_manual(values = c("red4", "orangered", "gold", "lightsalmon", "seagreen4", "lightgreen","lightskyblue", "royalblue3", "plum", "tan3"))                                      
-
+```{r phyloseq class family RA, fig.show='hold', fig.cap="**Figure S4**. Relative abundance of bacterial taxa Families among Daphnia, Holopedium, calanoid and cyclopoid copepods, and bacterioplankton in water from lakes of the Eastern Sierra Nevada mountains."}
 
 # if merged across all samples at organism level...
 merged.PS.500.organism <- merge_samples(PS.500, "organism") # merge by organisms, pooling across all levels
@@ -2333,99 +2198,7 @@ sample_data(merged.PS.500.organism)$organism<-factor(c("Daphnia", "Holopedium", 
 sample_data(merged.PS.500.organism)$organism<-factor(sample_data(merged.PS.500.organism)$organism,
                                   levels=c("Daphnia", "Holopedium", "Calanoid", "Cyclopoid", "Water"))
 
-normalized_ps_class.org = tax_glom(merged.PS.500.organism, "Class", NArm = TRUE)
-norm_ps_class_relabun_org = transform_sample_counts(normalized_ps_class.org, function(OTU) OTU/sum(OTU))
 
-ps.abund.class.org<-psmelt(norm_ps_class_relabun_org)
-ps.abund.class.org<-ps.abund.class.org %>%
-   dplyr::rename("rel_abund" = "Abundance") 
-
-# classes that have rel.abund less than 5% will be named as other
-ps.abund.class.org$Class[ps.abund.class.org$rel_abund <= 0.05] <- "Other (<5%)" 
-
-ps.abund.class.org$Class<-as.factor(ps.abund.class.org$Class)
-ps.abund.class.org$Class<-fct_relevel(ps.abund.class.org$Class, 'Other (<5%)', after=Inf)
-ps.abund.class.org$organism<-factor(ps.abund.class.org$organism)
-
-
-ggplot(ps.abund.class.org, aes(x=organism, y=rel_abund, fill=Class, color=Class)) +
-  geom_bar(aes(fill=Class, color=Class), stat="identity", position="fill") +
-  xlab("Sample Type") +ylab("Relative Abundance") + theme_bw() +
-  theme(axis.text.x=element_text(size=10)) + theme(axis.title.x=element_text(size=13)) +
-  theme(axis.text.y=element_text(size=11)) + theme(axis.title.y=element_text(size=13)) +
-  scale_fill_manual(values = c("orangered", "gold", "seagreen4", "lightskyblue", "plum", "tan3")) +
-  scale_color_manual(values = c("orangered", "gold", "seagreen4", "lightskyblue", "plum", "tan3"))
-
-
-class.org.dom<-ps.abund.class.org[!(ps.abund.class.org$Class=="Other (<5%)"),]
-class.org.dom.sum<- class.org.dom %>%
-  dplyr::select(organism, rel_abund, Class)
-
-
-
-
-
-############# by Family
-normalized_ps_family = tax_glom(merged.PS.500, "Family", NArm = TRUE)
-normalized_ps_family_relabun = transform_sample_counts(normalized_ps_family, function(OTU) OTU/sum(OTU))
-
-ps.abund.family<-psmelt(normalized_ps_family_relabun)
-ps.abund.family<-ps.abund.family %>%
-   dplyr::rename("rel_abund" = "Abundance") 
-
-# classes that have rel.abund less than 10% will be named as other
-ps.abund.family$Family[ps.abund.family$rel_abund <= 0.10] <- "Other (<10%)" 
-
-ps.abund.family$Family<-as.factor(ps.abund.family$Family)
-ps.abund.family$Family<-fct_relevel(ps.abund.family$Family, 'Other (<10%)', after=Inf)
-
-ps.abund.family$Date<-as.factor(ps.abund.family$time_point)
-ps.abund.family$Date<-recode_factor(ps.abund.family$Date, 
-                                "1" = "25-Jun",
-                                "2" = "6-Jul",
-                                "3" = "21-Jul",
-                                "4" = "4-Aug",
-                                "5" = "22-Aug")
-
-# family-class
-
-ps.abund.family$Fam.clas.other<-paste(ps.abund.family$Class, ps.abund.family$Family, sep="-")
-ps.abund.family$Fam.clas.other<-ifelse(
-                  ps.abund.family$Family == "Other (<10%)", "Other (<10%)", ps.abund.family$Fam.clas.other)
-
-ps.abund.family$Fam.clas.other<-fct_relevel(ps.abund.family$Fam.clas.other, 'Other (<10%)', after=Inf)
-
-
-ggplot(ps.abund.family, aes(x = Date, y = rel_abund, fill= Fam.clas.other, color = Fam.clas.other)) +
-  geom_bar(width = 0.8, aes(fill = Fam.clas.other, color = Fam.clas.other),
-           stat ="identity", position = "fill") +
-  facet_grid(cols = vars(lake), rows = vars(phy_group)) + 
-  xlab("Sampling Time Point") +  
-  ylab("Relative Abundance") +
-  theme_bw() +
-  theme(axis.text.x=element_text(size=8, angle = 75, vjust = 0.5, hjust=1), axis.title.x=element_text(size=13)) +
-  theme(axis.text.y=element_text(size=11), axis.title.y=element_text(size=13)) +
-  theme(strip.text.x = element_text(size = 13), strip.text.y = element_text(size = 13)) +
-  scale_fill_manual(values = c("tomato", "coral",
-                               "goldenrod2","gold", "yellow2",
-                               "navajowhite3",
-                               "olivedrab","springgreen4","seagreen3", "yellowgreen",
-                               "mediumaquamarine","limegreen","palegreen2","darkseagreen3",
-      "steelblue4","blue", "royalblue3", "cornflowerblue", "dodgerblue", "skyblue3","lightskyblue", "lightblue", "paleturquoise", "slategray1", "slategray3",
-      "gray50", "gray30",
-     "thistle"))+
-  scale_color_manual(values = c("tomato", "coral",
-                               "goldenrod2","gold", "yellow2",
-                               "navajowhite3",
-                               "olivedrab","springgreen4","seagreen3", "yellowgreen",
-                               "mediumaquamarine","limegreen","palegreen2","darkseagreen3",
-      "steelblue4","blue", "royalblue3", "cornflowerblue", "dodgerblue","skyblue3", "lightskyblue", "lightblue", "paleturquoise", "slategray1", "slategray3",
-      "gray50", "gray30",
-     "thistle"))
-
-
-
-# if merged across all samples at organism level...
 normalized_ps_family.org = tax_glom(merged.PS.500.organism, "Family", NArm = TRUE)
 norma_ps_family_relabun_org = transform_sample_counts(normalized_ps_family.org, function(OTU) OTU/sum(OTU))
 
@@ -2441,6 +2214,13 @@ ps.abund.fam.org$Fam.clas.other<-ifelse(
                   ps.abund.fam.org$Family == "Other (<5%)", "Other (<5%)", ps.abund.fam.org$Fam.clas.other)
 
 ps.abund.fam.org$Fam.clas.other<-fct_relevel(ps.abund.fam.org$Fam.clas.other, 'Other (<5%)', after=Inf)
+
+  
+#### Family-Class level dominance in each group (zooplankton or water samples)
+
+fam.org.dom<-ps.abund.fam.org[!(ps.abund.fam.org$Fam.clas.other=="Other (<5%)"),]
+fam.org.dom.sum<- fam.org.dom %>%
+  dplyr::select(organism, rel_abund, Fam.clas.other)
 
 
 ggplot(ps.abund.fam.org, aes(x = organism, y = rel_abund, fill= Fam.clas.other, color = Fam.clas.other)) +
@@ -2464,16 +2244,10 @@ ggplot(ps.abund.fam.org, aes(x = organism, y = rel_abund, fill= Fam.clas.other, 
 dev.copy(pdf, "figures/FigS4.Relabund.class.fam.pdf", height=8, width=10)
 dev.off()
 
-
-fam.org.dom<-ps.abund.fam.org[!(ps.abund.fam.org$Fam.clas.other=="Other (<5%)"),]
-fam.org.dom.sum<- fam.org.dom %>%
-  dplyr::select(organism, rel_abund, Fam.clas.other)
-
-
 ```
 
-```{r testing effects of env. variables on rel. abund. and richness of dominant bacteria}
-
+#### Bacteria abund-by-Environ.
+```{r testing effects of env. variables on rel. abund. and richness of dominant bacteria, fig.show='hide'}
 # using Abund.final from the last code chunk
 # testing the effects of time, lake, and sample type on the 5 most dominant classes of bacteria
 
@@ -2897,7 +2671,10 @@ bactero_lat<-ggplot(bacteroidia, aes(x=latitude, y=Bactero.rel_abund.sum,
   annotate(geom="text", x=37.6, y=1.0, label="Water Adj-R2=0.449, p<0.001", size=2,
            color="black")
 bactero_lat
+```
 
+
+```{r pool env-dominant bacteria plots, fig.dim=c(14,12), fig.cap="**Figure 5**. Plots of spatial and environmental variables with strongest correlations with microbial communities in water bacterioplankton and zooplankton hosts (see Table S6). (A-C) Correlations between Shannon diversity (top row) and latitude, dissolved oxygen, and conductivity. (D-K) Correlations between the relative abundance of bacteria classes (Gammaproteobacteria, Alphaproteobacteria, Actinobacteria, Bacteroidia) and spatial (middle row) and environmental predictors (bottom row)."}
 #### pool the plots (add in shannon from above)
 multregres.plots.shannon.env.wat.zoop<-plot_grid(plot_grid(lat.shan.plot.zoop + guides(color="none", fill="none"),
                                              DO.shan.plot.zoop + guides(color="none", fill="none"),

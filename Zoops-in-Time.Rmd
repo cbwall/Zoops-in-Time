@@ -55,7 +55,7 @@ Load in the environmental field data and create plots for environmental conditio
 - then load in air temperatures and precipitations data from sampling stations in Mammoth Lakes. 
 
 ```{r depth data, results='hide', collapse=TRUE}
-field.df<-read.csv("data/field_metadata.csv")
+field.df<-read.csv("data/field_nutr_metadata.csv")
 field.df$date.simple<-field.df$time_point
 field.df$date.simple<-recode_factor(field.df$date.simple, 
                                 "1" = "25-Jun",
@@ -248,7 +248,7 @@ Test for differences in zooplankton densities across lakes and time points.
 ```{r plot of zooplankton community dot-line, collapse=TRUE}
 # load in the density data
 # density is the number of zoops per liter
-counts <- read.csv('data/Zoop.community.csv')
+counts <- read.csv('data/zoop_community.csv')
 counts$time_point <- as.factor(counts$time_point)
 counts$lake <- as.factor(counts$lake)
 str(counts)

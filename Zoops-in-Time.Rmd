@@ -750,7 +750,7 @@ rownames(MetaD.SQ.Env)<-MetaD.SQ.Env$sampleNames
 
 # make new column for above or below treeline
 MetaD.SQ.Env$elev.cat <- as.factor(ifelse(MetaD.SQ.Env$elevation_m < 2900, "Below", "Above"))
-
+ 
 # are row names the same? if so, let's boogie
 identical(rownames(sample_data(ps.prune.LOCAL)), rownames(MetaD.SQ.Env))
 write.csv(MetaD.SQ.Env, "output/MetaD.SQ.Env.csv")

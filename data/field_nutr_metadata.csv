@@ -1,4 +1,4 @@
-location,time_point,date,lake,depth..ft,tow..ft,chla..ml,sterivex..ml,TA..mg.L,temp..C,DO..perc,DO..mg.L,spc,cond,pH,DOC_values,TDN..ug.L,TDP..ug.L,chla..ug.L
+location,time_point,date,lake,depth..ft,tow..ft,chla..ml,sterivex..ml,TA_mg.L,temp_C,DO_perc,DO_mg.L,spc,cond,pH,DOC_mg.L,TDN_ug.L,TDP_ug.L,chla_ug.L
 Sierra Nevada,1,6/25/22,Convict,145,60,420,720,80,13.8,81.6,8.45,166,130.3,5.87,NA,NA,NA,0.26
 Sierra Nevada,1,6/26/22,Eastern Brook,18.6,15,300,465,20,13.1,67.3,7.05,20,15.5,6.9,NA,217.44,32.97,0.4
 Sierra Nevada,1,6/26/22,Serene,23.8,21,300,300,20,14.4,69.5,7.06,17.6,14,6.96,NA,211.83,10.84,1.32

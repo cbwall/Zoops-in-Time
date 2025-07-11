@@ -66,12 +66,12 @@ field.df$date.simple<-recode_factor(field.df$date.simple,
 
 
 str(field.df)
-field.df$TDP..ug.L<-as.numeric(field.df$TDP..ug.L)
-field.df$TDN..ug.L<-as.numeric(field.df$TDN..ug.L)
+field.df$TDP_ug.L<-as.numeric(field.df$TDP_ug.L)
+field.df$TDN_ug.L<-as.numeric(field.df$TDN_ug.L)
 
 ## replace outliers in nutrient analysis
 field.df<-field.df %>% 
-  naniar::replace_with_na(replace = list(TDP..ug.L = 4102.48))
+  naniar::replace_with_na(replace = list(TDP_ug.L = 4102.48))
 
 # order the lakes by North to South or upstream in phyloseq 
 field.df$lake <- factor(field.df$lake, levels = 
@@ -95,7 +95,7 @@ depth.df<-cbind(mean.depth.m[1:2], mean.depth.SE[2])
 ```{r nutrients, fig.show='hold', collapse=TRUE, fig.dim=c(10,6), fig.cap="**Figure 2.** Environmental and water chemistry metrics measured in each of the six lakes across five sampling time points."}
 ######## TDP
 
-TP.plot<-ggplot(field.df, aes(x=date.simple, y=TDP..ug.L, group=lake, color=lake)) + 
+TP.plot<-ggplot(field.df, aes(x=date.simple, y=TDP_ug.L, group=lake, color=lake)) + 
   geom_point(size=2)+
   geom_line() + 
   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
@@ -106,7 +106,7 @@ TP.plot<-ggplot(field.df, aes(x=date.simple, y=TDP..ug.L, group=lake, color=lake
 
 ######## TDN
 
-TN.plot<-ggplot(field.df, aes(x=date.simple, y=TDN..ug.L, group=lake, color=lake)) + 
+TN.plot<-ggplot(field.df, aes(x=date.simple, y=TDN_ug.L, group=lake, color=lake)) + 
   geom_point(size=2)+
   geom_line() + 
   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
@@ -117,7 +117,7 @@ TN.plot<-ggplot(field.df, aes(x=date.simple, y=TDN..ug.L, group=lake, color=lake
 
 ####### DOC
 
-DOC.plot<-ggplot(field.df, aes(x=date.simple, y=DOC_values, group=lake, color=lake)) + 
+DOC.plot<-ggplot(field.df, aes(x=date.simple, y=DOC_mg.L, group=lake, color=lake)) + 
   geom_line() +  
   geom_point(size = 2)+  
   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
@@ -128,7 +128,7 @@ DOC.plot<-ggplot(field.df, aes(x=date.simple, y=DOC_values, group=lake, color=la
 
 ####### chlorophyll
 
-chla.plot<- ggplot(field.df, aes(x= date.simple, y=chla..ug.L, group=lake, color=lake)) + 
+chla.plot<- ggplot(field.df, aes(x= date.simple, y=chla_ug.L, group=lake, color=lake)) + 
   geom_line() +  
   geom_point(size = 2)+  
   scale_color_manual(values =c("darkslategray", "dodgerblue3", "#63A5CA", "lightsteelblue4","lightblue3", "#8BDDC4"))+
@@ -141,7 +141,7 @@ chla.plot<- ggplot(field.df, aes(x= date.simple, y=chla..ug.L, group=lake, color
 
 ######## Dissolved oxygen
 
-DO.percent.plot<-ggplot(field.df, aes(x= date.simple, y=DO..perc, group=lake, color=lake)) + 
+DO.percent.plot<-ggplot(field.df, aes(x= date.simple, y=DO_perc, group=lake, color=lake)) + 
   geom_line() +  
   geom_point(size = 2)+ 
   coord_cartesian(ylim=c(60, 90))+
@@ -186,7 +186,7 @@ pH.plot<-ggplot(field.df, aes(x= date.simple,  y=pH, group=lake, color=lake)) +
 
 ######## Surface temp
 
-laketemp.plot<-ggplot(field.df, aes(x= date.simple,  y=temp..C, group=lake, color=lake)) + 
+laketemp.plot<-ggplot(field.df, aes(x= date.simple,  y=temp_C, group=lake, color=lake)) + 
   geom_line() +  
   geom_point(size = 2)+ 
   coord_cartesian(ylim=c(12, 22))+
@@ -301,10 +301,10 @@ tot.dens.ph<-emmeans(tot.dens.mod, pairwise~time_point)
 multcomp::cld(tot.dens.ph, Letters=letters)
 
 ### Env. effects
-stepAIC(lm(dens.row.sums ~ latitude + elevation_m + DO..perc + log(DOC) + chla_ug.L + pH + cond + temp..C, data = counts))
-tot.zoop.dens.env.mod<-lm(dens.row.sums ~ latitude + elevation_m + DO..perc + cond + temp..C, data = counts)
+stepAIC(lm(dens.row.sums ~ latitude + elevation_m + DO_perc + log(DOC_mg.L) + chla_ug.L + pH + cond + temp_C, data = counts))
+tot.zoop.dens.env.mod<-lm(dens.row.sums ~ latitude + elevation_m + DO_perc + cond + temp_C, data = counts)
 tot.zoop.dens.env.aov<-Anova(tot.zoop.dens.env.mod, type=2)
-#plot(allEffects(lm(dens.row.sums ~ temp..C, data = counts)))
+#plot(allEffects(lm(dens.row.sums ~ temp_C, data = counts)))
 ```
 
 - Best models are below for total zooplankton densities by Site x Time, and by environmental conditons. 
@@ -546,11 +546,11 @@ zoop.shan.lake.time.mod<-lm(Shannon ~ time_point + lake, data = zoop.comm.div)
 zoop.shan.lake.time.aov<-Anova(zoop.shan.lake.time.mod, type=2)
 # no effect of time or lake on Shannon diversity of zoop community samples (p> 0.425)
 
-stepAIC(lm(Shannon ~ latitude + elevation_m + DO..perc + log(DOC) + chla_ug.L + pH + cond + temp..C, data = zoop.comm.div))
+stepAIC(lm(Shannon ~ latitude + elevation_m + DO_perc + log(DOC_mg.L) + chla_ug.L + pH + cond + temp_C, data = zoop.comm.div))
 
-shan.zoop.env.mod<-lm(Shannon ~ latitude + cond + temp..C, data = zoop.comm.div)
+shan.zoop.env.mod<-lm(Shannon ~ latitude + cond + temp_C, data = zoop.comm.div)
 shan.zoop.env.aov<-Anova(shan.zoop.env.mod, type=2)
-plot(allEffects(lm(Shannon ~ temp..C, data = zoop.comm.div)))
+plot(allEffects(lm(Shannon ~ temp_C, data = zoop.comm.div)))
 ```
 
 - Best models are below for Shannon Diversity by Site x Time, and Shannon Diversity x environmental conditions. 
